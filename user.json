@@ -1,0 +1,81 @@
+const express = require("express");
+const fs = require("fs");
+const path = require("path");
+
+const app = express();
+const PORT = 3000;
+
+app.use(express.json());
+app.use(express.static(__dirname));
+
+const DB_FILE = path.join(__dirname, "users.json");
+
+// 📦 Load users
+function loadUsers() {
+  if (!fs.existsSync(DB_FILE)) {
+    fs.writeFileSync(DB_FILE, JSON.stringify({ users: [] }, null, 2));
+  }
+  const data = fs.readFileSync(DB_FILE);
+  return JSON.parse(data);
+}
+
+// 💾 Save users
+function saveUsers(data) {
+  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+}
+
+// 🔐 REGISTER
+app.post("/api/register", (req, res) => {
+  const { username, password, email } = req.body;
+
+  const db = loadUsers();
+
+  const exists = db.users.find(u => u.username === username);
+  if (exists) {
+    return res.json({ success: false, message: "User already exists" });
+  }
+
+  db.users.push({
+    id: Date.now(),
+    username,
+    password,
+    email
+  });
+
+  saveUsers(db);
+
+  res.json({ success: true, message: "User created" });
+});
+
+// 🔐 LOGIN
+app.post("/api/login", (req, res) => {
+  const { username, password } = req.body;
+
+  const db = loadUsers();
+
+  const user = db.users.find(
+    u => u.username === username && u.password === password
+  );
+
+  if (!user) {
+    return res.json({ success: false, message: "Invalid login" });
+  }
+
+  res.json({
+    success: true,
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email
+    }
+  });
+});
+
+// 🌐 HOME PAGE
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});

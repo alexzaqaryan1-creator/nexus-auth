@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NEXUS — Authentication System</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- PAGE: LOGIN -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <div id="page-login" class="page">
+    <div class="split-layout">
+      
+      <!-- LEFT PANEL -->
+      <div class="left-panel">
+        <div class="left-inner">
+          <div class="brand-mark">✦ NEXUS</div>
+          <h1 class="left-headline">Join the Modern Social Network</h1>
+          <p class="left-sub">Connect, share, and discover amazing content with NEXUS — where your voice matters.</p>
+          
+          <div class="floating-cards">
+            <div class="f-card c1">
+              <span class="dot g"></span>
+              <span>1.2M+ Active Users</span>
+            </div>
+            <div class="f-card c2">
+              <span class="dot b"></span>
+              <span>Real-Time Connections</span>
+            </div>
+            <div class="f-card c3">
+              <span class="dot r"></span>
+              <span>Zero Ads Experience</span>
+            </div>
+          </div>
+
+          <ul class="perks">
+            <li><span class="perk-icon">✓</span> Secure & Private</li>
+            <li><span class="perk-icon">✓</span> Lightning Fast</li>
+            <li><span class="perk-icon">✓</span> Always Synced</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- RIGHT PANEL -->
+      <div class="right-panel">
+        <div class="form-container">
+          <div class="form-logo">NEXUS</div>
+          <p class="form-tagline">Welcome back. Let's continue your journey.</p>
+
+          <!-- Alert Messages -->
+          <div id="login-error" class="alert alert-error hidden"></div>
+          <div id="login-success" class="alert alert-success hidden"></div>
+
+          <!-- Login Form -->
+          <form id="login-form">
+            <div class="field-group">
+              <label for="login-username">Username</label>
+              <input 
+                type="text" 
+                id="login-username" 
+                placeholder="Enter your username" 
+                autocomplete="username"
+              >
+              <span id="err-login-username" class="field-err"></span>
+            </div>
+
+            <div class="field-group">
+              <label for="login-password">Password</label>
+              <div class="pw-wrap">
+                <input 
+                  type="password" 
+                  id="login-password" 
+                  placeholder="Enter your password" 
+                  autocomplete="current-password"
+                >
+                <button type="button" class="toggle-pw" data-target="login-password">Show</button>
+              </div>
+              <span id="err-login-password" class="field-err"></span>
+            </div>
+
+            <button type="submit" id="login-btn" class="btn-primary">
+              <span class="btn-text">Sign In</span>
+              <div class="btn-loader hidden"></div>
+            </button>
+          </form>
+
+          <div class="divider">
+            <span>Don't have an account?</span>
+          </div>
+
+          <button type="button" id="go-register" class="btn-secondary">
+            Create Account
+          </button>
+
+          <div class="form-footer">
+            <p>By signing in, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- PAGE: REGISTER -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <div id="page-register" class="page">
+    <div class="split-layout">
+      
+      <!-- LEFT PANEL -->
+      <div class="left-panel">
+        <div class="left-inner">
+          <div class="brand-mark">✦ NEXUS</div>
+          <h1 class="left-headline">Start Your NEXUS Journey</h1>
+          <p class="left-sub">Create an account in seconds and unlock access to millions of connections worldwide.</p>
+          
+          <div class="floating-cards">
+            <div class="f-card c1">
+              <span class="dot g"></span>
+              <span>Quick Setup</span>
+            </div>
+            <div class="f-card c2">
+              <span class="dot b"></span>
+              <span>Secure Verification</span>
+            </div>
+            <div class="f-card c3">
+              <span class="dot r"></span>
+              <span>Instant Access</span>
+            </div>
+          </div>
+
+          <ul class="perks">
+            <li><span class="perk-icon">✓</span> No Credit Card Required</li>
+            <li><span class="perk-icon">✓</span> Instant Verification</li>
+            <li><span class="perk-icon">✓</span> Complete Privacy Control</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- RIGHT PANEL -->
+      <div class="right-panel">
+        <div class="form-container wide">
+          <div class="form-logo">NEXUS</div>
+          <p class="form-tagline">Create your account and start connecting today.</p>
+
+          <!-- Alert Messages -->
+          <div id="reg-error" class="alert alert-error hidden"></div>
+          <div id="reg-success" class="alert alert-success hidden"></div>
+
+          <!-- Register Form -->
+          <form id="register-form">
+            <!-- Row: First & Last Name -->
+            <div class="row-2">
+              <div class="field-group">
+                <label for="reg-firstname">First Name</label>
+                <input 
+                  type="text" 
+                  id="reg-firstname" 
+                  placeholder="John" 
+                  autocomplete="given-name"
+                >
+                <span id="err-firstname" class="field-err"></span>
+              </div>
+              <div class="field-group">
+                <label for="reg-lastname">Last Name</label>
+                <input 
+                  type="text" 
+                  id="reg-lastname" 
+                  placeholder="Doe" 
+                  autocomplete="family-name"
+                >
+                <span id="err-lastname" class="field-err"></span>
+              </div>
+            </div>
+
+            <!-- Username with Live Check -->
+            <div class="field-group">
+              <label for="reg-username">Username</label>
+              <div class="username-wrap">
+                <input 
+                  type="text" 
+                  id="reg-username" 
+                  placeholder="johndoe" 
+                  autocomplete="username"
+                >
+                <div id="username-status" class="username-status"></div>
+              </div>
+              <span id="err-username" class="field-err"></span>
+            </div>
+
+            <!-- Email -->
+            <div class="field-group">
+              <label for="reg-email">Email Address</label>
+              <input 
+                type="email" 
+                id="reg-email" 
+                placeholder="john@example.com" 
+                autocomplete="email"
+              >
+              <span id="err-email" class="field-err"></span>
+            </div>
+
+            <!-- Date of Birth -->
+            <div class="field-group">
+              <label for="reg-dob">Date of Birth</label>
+              <input 
+                type="date" 
+                id="reg-dob" 
+                autocomplete="bday"
+              >
+              <span id="err-dob" class="field-err"></span>
+            </div>
+
+            <!-- Password with Strength Indicator -->
+            <div class="field-group">
+              <label for="reg-password">Password</label>
+              <div class="pw-wrap">
+                <input 
+                  type="password" 
+                  id="reg-password" 
+                  placeholder="Create a strong password" 
+                  autocomplete="new-password"
+                >
+                <button type="button" class="toggle-pw" data-target="reg-password">Show</button>
+              </div>
+              <div class="strength-bar">
+                <div id="s1" class="s-seg"></div>
+                <div id="s2" class="s-seg"></div>
+                <div id="s3" class="s-seg"></div>
+                <div id="s4" class="s-seg"></div>
+              </div>
+              <span id="strength-label" class="strength-label"></span>
+              <span id="err-reg-password" class="field-err"></span>
+            </div>
+
+            <!-- Confirm Password -->
+            <div class="field-group">
+              <label for="reg-confirm">Confirm Password</label>
+              <div class="pw-wrap">
+                <input 
+                  type="password" 
+                  id="reg-confirm" 
+                  placeholder="Confirm your password" 
+                  autocomplete="new-password"
+                >
+                <button type="button" class="toggle-pw" data-target="reg-confirm">Show</button>
+              </div>
+              <span id="err-confirm" class="field-err"></span>
+            </div>
+
+            <button type="submit" id="reg-btn" class="btn-primary">
+              <span class="btn-text">Create Account</span>
+              <div class="btn-loader hidden"></div>
+            </button>
+          </form>
+
+          <div class="divider">
+            <span>Already have an account?</span>
+          </div>
+
+          <button type="button" id="go-login-from-reg" class="btn-secondary">
+            Sign In Instead
+          </button>
+
+          <div class="form-footer">
+            <p>By creating an account, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- PAGE: DASHBOARD (User Account) -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <div id="page-dashboard" class="page">
+    
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+      <div class="form-logo">NEXUS</div>
+      <div class="nav-right">
+        <span id="nav-username" style="font-size: 0.85rem; font-weight: 600; color: var(--muted);"></span>
+        <button id="logout-btn" class="btn-logout">Logout</button>
+      </div>
+    </nav>
+
+    <!-- Dashboard Body -->
+    <div class="dashboard-body">
+      
+      <!-- Welcome Card -->
+      <div class="welcome-card">
+        <div class="wc-avatar" id="wc-avatar">J</div>
+        <div class="wc-text">
+          <div class="wc-greeting" id="wc-greeting">Good Morning,</div>
+          <div class="wc-name" id="wc-name">John Doe</div>
+          <div class="wc-handle" id="wc-handle">@johndoe</div>
+        </div>
+      </div>
+
+      <!-- Info Grid -->
+      <div class="info-grid">
+        <div class="info-card">
+          <div class="info-label">Email</div>
+          <div class="info-value" id="info-email">john@example.com</div>
+        </div>
+        <div class="info-card">
+          <div class="info-label">Date of Birth</div>
+          <div class="info-value" id="info-dob">January 1, 2000</div>
+        </div>
+        <div class="info-card">
+          <div class="info-label">Joined</div>
+          <div class="info-value" id="info-joined">April 12, 2026</div>
+        </div>
+        <div class="info-card">
+          <div class="info-label">Account ID</div>
+          <div class="info-value mono" id="info-id">abc123def456ghi789...</div>
+        </div>
+      </div>
+
+      <!-- Clock Bar -->
+      <div class="clock-bar">
+        <div>
+          <div class="clock-label">Current Time</div>
+          <div id="live-clock" style="font-family: var(--font-head); font-size: 1.6rem; font-weight: 800; letter-spacing: 2px;">00:00:00</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Load JavaScript -->
+  <script src="script.js"></script>
+
+</body>
+</html>
