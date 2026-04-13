@@ -728,3 +728,66 @@ html, body {
     grid-template-columns: 1fr;
   }
 }
+/* =========================
+   MOBILE RESPONSIVE FIX
+========================= */
+
+@media (max-width: 768px) {
+
+  body {
+    padding: 10px;
+  }
+
+  .container {
+    width: 100%;
+    padding: 10px;
+  }
+
+  form {
+    width: 100%;
+  }
+
+  input {
+    width: 100%;
+    font-size: 16px;
+  }
+
+  button {
+    width: 100%;
+    font-size: 16px;
+    padding: 12px;
+  }
+
+  .btn-text {
+    font-size: 16px;
+  }
+
+  .page {
+    padding: 10px;
+  }
+
+  /* hide unnecessary side spacing */
+  .left, .right {
+    display: block;
+    width: 100%;
+  }
+
+  /* fix dashboard layout */
+  .dashboard {
+    flex-direction: column;
+  }
+
+  .card {
+    width: 100%;
+    margin-bottom: 10px;
+  }
+
+  /* make text readable */
+  h1, h2, h3 {
+    font-size: 18px;
+  }
+
+  p {
+    font-size: 14px;
+  }
+}
