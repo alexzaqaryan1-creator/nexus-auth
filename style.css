@@ -729,65 +729,60 @@ html, body {
   }
 }
 /* =========================
-   MOBILE RESPONSIVE FIX
+   HARD MOBILE FIX (FULL RESET)
 ========================= */
 
-@media (max-width: 768px) {
+* {
+  box-sizing: border-box;
+}
 
-  body {
-    padding: 10px;
-  }
+body {
+  margin: 0;
+  padding: 0;
+}
 
-  .container {
-    width: 100%;
-    padding: 10px;
-  }
+/* main container fix */
+.container, .page, .form-container {
+  width: 100% !important;
+  max-width: 100% !important;
+  padding: 15px;
+}
 
-  form {
-    width: 100%;
-  }
+/* force inputs full width */
+input, select, textarea {
+  width: 100% !important;
+  font-size: 16px;
+}
 
-  input {
-    width: 100%;
-    font-size: 16px;
-  }
+/* buttons full width */
+button {
+  width: 100% !important;
+  padding: 12px;
+}
 
-  button {
-    width: 100%;
-    font-size: 16px;
-    padding: 12px;
-  }
+/* FLEX FIX */
+.row, .flex, .dashboard, .wrapper {
+  display: flex;
+  flex-direction: column !important;
+  gap: 10px;
+}
 
-  .btn-text {
-    font-size: 16px;
-  }
+/* hide overflow issues */
+html, body {
+  overflow-x: hidden;
+}
 
-  .page {
-    padding: 10px;
-  }
+/* prevent big cards breaking screen */
+.card, .box, .panel {
+  width: 100% !important;
+}
 
-  /* hide unnecessary side spacing */
-  .left, .right {
-    display: block;
-    width: 100%;
-  }
+/* text scaling */
+h1 { font-size: 22px; }
+h2 { font-size: 18px; }
+p  { font-size: 14px; }
 
-  /* fix dashboard layout */
-  .dashboard {
-    flex-direction: column;
-  }
-
-  .card {
-    width: 100%;
-    margin-bottom: 10px;
-  }
-
-  /* make text readable */
-  h1, h2, h3 {
-    font-size: 18px;
-  }
-
-  p {
-    font-size: 14px;
-  }
+/* remove fixed widths if exist */
+*[style*="width"] {
+  max-width: 100% !important;
 }
