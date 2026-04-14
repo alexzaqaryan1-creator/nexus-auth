@@ -113,8 +113,26 @@ initTables();
 // ROUTES — HEALTH CHECK
 // ════════════════════════════════════════════════════════════════════════
 
-app.get('/api/test', (req, res) => {
-  res.json({ message: 'Server is working' });
+app.get('/api/test', async (req, res) => {
+  const info = {
+    server: 'running',
+    db_host: process.env.DB_HOST || 'NOT SET',
+    db_name: process.env.DB_NAME || 'NOT SET',
+    db_user: process.env.DB_USER || 'NOT SET',
+    db_port: process.env.DB_PORT || '3306 (default)',
+    db_password_set: !!process.env.DB_PASSWORD
+  };
+
+  try {
+    const conn = await pool.getConnection();
+    conn.release();
+    info.database = 'connected';
+  } catch (err) {
+    info.database = 'FAILED';
+    info.db_error = err.message;
+  }
+
+  res.json(info);
 });
 
 // ════════════════════════════════════════════════════════════════════════
