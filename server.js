@@ -1,21 +1,18 @@
-// ═══════════════════════════════════════════════
-// IMPORTS
-// ═══════════════════════════════════════════════
 const express = require('express');
 const mysql = require('mysql2/promise');
 const cors = require('cors');
+const path = require('path');
 
 const app = express();
 
-// ═══════════════════════════════════════════════
-// MIDDLEWARE
-// ═══════════════════════════════════════════════
+// middleware
 app.use(cors());
 app.use(express.json());
 
-// ═══════════════════════════════════════════════
-// ENV CHECK (IMPORTANT FOR RENDER)
-// ═══════════════════════════════════════════════
+// 🔥 FRONTEND (IMPORTANT FIX)
+app.use(express.static(path.join(__dirname, 'public')));
+
+// env check
 if (
   !process.env.DB_HOST ||
   !process.env.DB_USER ||
@@ -25,9 +22,7 @@ if (
   console.log("❌ Missing DB environment variables");
 }
 
-// ═══════════════════════════════════════════════
-// DATABASE POOL
-// ═══════════════════════════════════════════════
+// database pool
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -37,16 +32,12 @@ const pool = mysql.createPool({
   connectionLimit: 10
 });
 
-// ═══════════════════════════════════════════════
-// HEALTH CHECK (IMPORTANT FOR RENDER)
-// ═══════════════════════════════════════════════
+// HOME PAGE (OPEN WEBSITE)
 app.get('/', (req, res) => {
-  res.send('🚀 Server is running');
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// ═══════════════════════════════════════════════
 // SEARCH USERS
-// ═══════════════════════════════════════════════
 app.get('/api/search-users/:query', async (req, res) => {
   try {
     const { query } = req.params;
@@ -72,9 +63,7 @@ app.get('/api/search-users/:query', async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════
 // SEND FRIEND REQUEST
-// ═══════════════════════════════════════════════
 app.post('/api/send-friend-request', async (req, res) => {
   try {
     const { sender_id, recipient_id } = req.body;
@@ -108,9 +97,7 @@ app.post('/api/send-friend-request', async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════
 // ACCEPT FRIEND REQUEST
-// ═══════════════════════════════════════════════
 app.post('/api/accept-friend-request', async (req, res) => {
   try {
     const { request_id } = req.body;
@@ -131,9 +118,7 @@ app.post('/api/accept-friend-request', async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════
 // NOTIFICATIONS
-// ═══════════════════════════════════════════════
 app.get('/api/notifications/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
@@ -157,9 +142,7 @@ app.get('/api/notifications/:user_id', async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════
-// SERVER START
-// ═══════════════════════════════════════════════
+// server start
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
