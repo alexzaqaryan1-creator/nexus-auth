@@ -44,8 +44,9 @@ pool.getConnection()
 // ════════════════════════════════════════════════════════════════════════
 
 async function initTables() {
-  const conn = await pool.getConnection();
+  let conn;
   try {
+    conn = await pool.getConnection();
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS users (
         id         INT AUTO_INCREMENT PRIMARY KEY,
@@ -98,7 +99,7 @@ async function initTables() {
   } catch (err) {
     console.error('Table init error:', err.message);
   } finally {
-    conn.release();
+    if (conn) conn.release();
   }
 }
 
