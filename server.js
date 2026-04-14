@@ -1,191 +1,112 @@
-const express = require('express');
-const path = require('path');
-const mysql = require('mysql2/promise');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
 // ════════════════════════════════════════════════════════════════════════
-// MIDDLEWARE
+// SEARCH USERS
 // ════════════════════════════════════════════════════════════════════════
 
-// Serve static files FIRST (CSS, JS, images, etc.)
-app.use(express.static(path.join(__dirname), {
-  setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.css')) {
-      res.setHeader('Content-Type', 'text/css; charset=utf-8');
-    } else if (filePath.endsWith('.js')) {
-      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-    }
-  }
-}));
-
-// Parse JSON
-app.use(express.json());
-
-// ════════════════════════════════════════════════════════════════════════
-// MYSQL CONNECTION
-// ════════════════════════════════════════════════════════════════════════
-
-const pool = mysql.createPool({
-  host: 'localhost',
-  user: 'root',
-  password: '',
-  database: 'nexus_auth',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// API ROUTES
-// ════════════════════════════════════════════════════════════════════════
-
-// Login Route
-app.post('/api/login', async (req, res) => {
+app.get('/api/search-users/:query', async (req, res) => {
   try {
-    const { username, password } = req.body;
-
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password required' });
-    }
+    const { query } = req.params;
+    const excludeId = req.query.exclude || 0;
 
     const connection = await pool.getConnection();
     const [rows] = await connection.execute(
-      'SELECT * FROM users WHERE username = ?',
-      [username]
+      'SELECT id, first_name, last_name, username FROM users WHERE (username LIKE ? OR first_name LIKE ? OR last_name LIKE ?) AND id != ? LIMIT 10',
+      [`%${query}%`, `%${query}%`, `%${query}%`, excludeId]
     );
     connection.release();
 
-    if (rows.length === 0) {
-      return res.status(401).json({ error: 'Invalid username or password' });
-    }
-
-    const user = rows[0];
-    if (password !== user.password) {
-      return res.status(401).json({ error: 'Invalid username or password' });
-    }
-
-    res.json({
-      success: true,
-      user: {
-        id: user.id,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        username: user.username,
-        email: user.email,
-        dob: user.dob,
-        joined_at: user.joined_at
-      }
-    });
+    res.json({ users: rows });
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('Search users error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// Register Route
-app.post('/api/register', async (req, res) => {
+// ════════════════════════════════════════════════════════════════════════
+// SEND FRIEND REQUEST
+// ════════════════════════════════════════════════════════════════════════
+
+app.post('/api/send-friend-request', async (req, res) => {
   try {
-    const { first_name, last_name, username, email, dob, password, confirm } = req.body;
+    const { sender_id, recipient_id } = req.body;
 
-    if (!first_name || !last_name || !username || !email || !dob || !password) {
-      return res.status(400).json({ error: 'All fields required' });
-    }
-
-    if (password !== confirm) {
-      return res.status(400).json({ error: 'Passwords do not match' });
+    if (!sender_id || !recipient_id) {
+      return res.status(400).json({ error: 'Missing user IDs' });
     }
 
     const connection = await pool.getConnection();
 
-    // Check if username exists
-    const [userCheck] = await connection.execute(
-      'SELECT id FROM users WHERE username = ?',
-      [username]
+    // Check if already friends
+    const [existing] = await connection.execute(
+      'SELECT id FROM friend_requests WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?)',
+      [sender_id, recipient_id, recipient_id, sender_id]
     );
 
-    if (userCheck.length > 0) {
+    if (existing.length > 0) {
       connection.release();
-      return res.status(400).json({ error: 'Username already taken' });
+      return res.status(400).json({ error: 'Request already exists' });
     }
 
-    // Check if email exists
-    const [emailCheck] = await connection.execute(
-      'SELECT id FROM users WHERE email = ?',
-      [email]
-    );
-
-    if (emailCheck.length > 0) {
-      connection.release();
-      return res.status(400).json({ error: 'Email already registered' });
-    }
-
-    // Insert new user
+    // Insert friend request
     await connection.execute(
-      'INSERT INTO users (first_name, last_name, username, email, dob, password) VALUES (?, ?, ?, ?, ?, ?)',
-      [first_name, last_name, username, email, dob, password]
+      'INSERT INTO friend_requests (sender_id, recipient_id, status) VALUES (?, ?, ?)',
+      [sender_id, recipient_id, 'pending']
     );
 
     connection.release();
 
-    res.json({ success: true, message: 'Account created successfully' });
+    res.json({ success: true, message: 'Friend request sent' });
   } catch (error) {
-    console.error('Register error:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Check username availability
-app.get('/api/check-username/:username', async (req, res) => {
-  try {
-    const { username } = req.params;
-
-    const connection = await pool.getConnection();
-    const [rows] = await connection.execute(
-      'SELECT id FROM users WHERE username = ?',
-      [username]
-    );
-    connection.release();
-
-    res.json({ available: rows.length === 0 });
-  } catch (error) {
-    console.error('Username check error:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Get user by ID
-app.get('/api/user/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const connection = await pool.getConnection();
-    const [rows] = await connection.execute(
-      'SELECT id, first_name, last_name, username, email, dob, joined_at FROM users WHERE id = ?',
-      [id]
-    );
-    connection.release();
-
-    if (rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    res.json({ user: rows[0] });
-  } catch (error) {
-    console.error('Get user error:', error);
+    console.error('Friend request error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// START SERVER
+// ACCEPT FRIEND REQUEST
 // ════════════════════════════════════════════════════════════════════════
 
-app.listen(PORT, () => {
-  console.log('================================');
-  console.log(`✅ Server running: http://localhost:${PORT}`);
-  console.log('📊 MySQL host:     localhost');
-  console.log('🗄️  MySQL database: nexus_auth');
-  console.log('================================');
+app.post('/api/accept-friend-request', async (req, res) => {
+  try {
+    const { request_id } = req.body;
+
+    const connection = await pool.getConnection();
+
+    await connection.execute(
+      'UPDATE friend_requests SET status = ? WHERE id = ?',
+      ['accepted', request_id]
+    );
+
+    connection.release();
+
+    res.json({ success: true, message: 'Friend request accepted' });
+  } catch (error) {
+    console.error('Accept request error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// GET NOTIFICATIONS
+// ════════════════════════════════════════════════════════════════════════
+
+app.get('/api/notifications/:user_id', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+
+    const connection = await pool.getConnection();
+    const [rows] = await connection.execute(
+      `SELECT fr.id, fr.sender_id, u.username, u.first_name, u.last_name, fr.created_at
+       FROM friend_requests fr
+       JOIN users u ON fr.sender_id = u.id
+       WHERE fr.recipient_id = ? AND fr.status = 'pending'
+       ORDER BY fr.created_at DESC`,
+      [user_id]
+    );
+    connection.release();
+
+    res.json({ notifications: rows });
+  } catch (error) {
+    console.error('Notifications error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });

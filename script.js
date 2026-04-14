@@ -2,6 +2,8 @@
 // PAGE NAVIGATION
 // ════════════════════════════════════════════════════════════════════════
 
+let currentUser = null;
+
 function showPage(pageId) {
   document.querySelectorAll('.page').forEach(p => {
     p.style.display = 'none';
@@ -70,81 +72,10 @@ document.querySelectorAll('.toggle-pw').forEach(btn => {
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// PASSWORD STRENGTH INDICATOR
+// PASSWORD STRENGTH INDICATOR (KEPT FOR REFERENCE, NO COLORS/MESSAGES)
 // ════════════════════════════════════════════════════════════════════════
 
-function checkStrength(password) {
-  let score = 0;
-  if (password.length >= 8) score++;
-  if (/[A-Z]/.test(password)) score++;
-  if (/[0-9]/.test(password)) score++;
-  if (/[^A-Za-z0-9]/.test(password)) score++;
-  return score;
-}
-
-const regPassword = document.getElementById('reg-password');
-if (regPassword) {
-  regPassword.addEventListener('input', () => {
-    const val = regPassword.value;
-    const score = checkStrength(val);
-    const segs = ['s1', 's2', 's3', 's4'];
-    const colors = ['#ef4444', '#f97316', '#eab308', '#22c55e'];
-    const labels = ['', 'Weak', 'Fair', 'Good', 'Strong'];
-
-    segs.forEach((id, i) => {
-      const seg = document.getElementById(id);
-      if (i < score) {
-        seg.style.background = colors[score - 1];
-      } else {
-        seg.style.background = '#e5e7eb';
-      }
-    });
-
-    const label = document.getElementById('strength-label');
-    if (label) label.textContent = val.length > 0 ? labels[score] : '';
-  });
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// USERNAME LIVE AVAILABILITY CHECK
-// ════════════════════════════════════════════════════════════════════════
-
-let usernameCheckTimer = null;
-
-const regUsername = document.getElementById('reg-username');
-if (regUsername) {
-  regUsername.addEventListener('input', () => {
-    const val = regUsername.value.trim();
-    const statusEl = document.getElementById('username-status');
-
-    clearTimeout(usernameCheckTimer);
-
-    if (val.length < 3) {
-      statusEl.textContent = '';
-      statusEl.className = 'username-status';
-      return;
-    }
-
-    statusEl.textContent = 'Checking...';
-    statusEl.className = 'username-status checking';
-
-    usernameCheckTimer = setTimeout(async () => {
-      try {
-fetch(`https://nexus-auth-yulh.onrender.com/api/check-username/${val}`)
-        const data = await res.json();
-        if (data.available) {
-          statusEl.textContent = 'Available';
-          statusEl.className = 'username-status available';
-        } else {
-          statusEl.textContent = 'Taken';
-          statusEl.className = 'username-status taken';
-        }
-      } catch (err) {
-        statusEl.textContent = '';
-      }
-    }, 500);
-  });
-}
+// Username live check COMPLETELY REMOVED — no colors, no messages
 
 // ════════════════════════════════════════════════════════════════════════
 // LOGIN FORM
@@ -190,12 +121,13 @@ if (loginForm) {
         showAlert('login-error', data.error || 'Login failed', 'error');
       } else {
         showAlert('login-success', 'Login successful! Redirecting...', 'success');
+        currentUser = data.user;
         setTimeout(() => {
           loadDashboard(data.user);
         }, 800);
       }
     } catch (err) {
-      showAlert('login-error', 'Could not connect to server. Is it running?', 'error');
+      showAlert('login-error', 'Could not connect to server', 'error');
     } finally {
       setLoading('login-btn', 'login-btn', false);
     }
@@ -262,7 +194,7 @@ if (registerForm) {
         }, 1500);
       }
     } catch (err) {
-      showAlert('reg-error', 'Could not connect to server. Is it running?', 'error');
+      showAlert('reg-error', 'Could not connect to server', 'error');
     } finally {
       regBtn.disabled = false;
       btnText.textContent = 'Create Account';
@@ -291,6 +223,23 @@ if (goLoginFromReg) {
     hideAlert('reg-success');
     clearFieldErrors();
     showPage('page-login');
+  });
+}
+
+// Chat button
+const chatBtn = document.getElementById('chat-btn');
+if (chatBtn) {
+  chatBtn.addEventListener('click', () => {
+    showPage('page-chat');
+    loadChatPage();
+  });
+}
+
+// Back from chat
+const backFromChat = document.getElementById('back-from-chat');
+if (backFromChat) {
+  backFromChat.addEventListener('click', () => {
+    showPage('page-dashboard');
   });
 }
 
@@ -335,6 +284,91 @@ function formatDate(dateStr) {
 }
 
 // ════════════════════════════════════════════════════════════════════════
+// CHAT FEATURE
+// ════════════════════════════════════════════════════════════════════════
+
+function loadChatPage() {
+  const searchInput = document.getElementById('user-search');
+  const searchBtn = document.getElementById('search-btn');
+
+  if (searchBtn) {
+    searchBtn.addEventListener('click', searchUsers);
+  }
+  
+  if (searchInput) {
+    searchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') searchUsers();
+    });
+  }
+}
+
+async function searchUsers() {
+  const searchInput = document.getElementById('user-search');
+  const query = searchInput.value.trim();
+
+  if (!query || query.length < 1) {
+    alert('Enter a username to search');
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/search-users/${query}?exclude=${currentUser.id}`);
+    const data = await res.json();
+
+    const resultsList = document.getElementById('search-results');
+    resultsList.innerHTML = '';
+
+    if (data.users.length === 0) {
+      resultsList.innerHTML = '<p style="color: var(--muted); text-align: center;">No users found</p>';
+      return;
+    }
+
+    data.users.forEach(user => {
+      const userDiv = document.createElement('div');
+      userDiv.className = 'user-card';
+      userDiv.innerHTML = `
+        <div>
+          <div style="font-weight: 600;">${user.first_name} ${user.last_name}</div>
+          <div style="color: var(--muted); font-size: 0.9rem;">@${user.username}</div>
+        </div>
+        <button class="btn-add-friend" data-user-id="${user.id}">
+          Add Friend
+        </button>
+      `;
+      resultsList.appendChild(userDiv);
+
+      const addBtn = userDiv.querySelector('.btn-add-friend');
+      addBtn.addEventListener('click', () => sendFriendRequest(user.id, user.username));
+    });
+  } catch (err) {
+    alert('Error searching users');
+  }
+}
+
+async function sendFriendRequest(recipientId, username) {
+  try {
+    const res = await fetch('/api/send-friend-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sender_id: currentUser.id,
+        recipient_id: recipientId
+      })
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      alert(`Friend request sent to @${username}`);
+    } else {
+      alert(data.error || 'Error sending request');
+    }
+  } catch (err) {
+    alert('Error sending friend request');
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // LIVE CLOCK
 // ════════════════════════════════════════════════════════════════════════
 
@@ -360,6 +394,7 @@ const logoutBtn = document.getElementById('logout-btn');
 if (logoutBtn) {
   logoutBtn.addEventListener('click', () => {
     if (clockInterval) clearInterval(clockInterval);
+    currentUser = null;
     showPage('page-login');
     loginForm.reset();
     clearFieldErrors();
@@ -367,7 +402,7 @@ if (logoutBtn) {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// INITIALIZE — Show login page on load
+// INITIALIZE
 // ════════════════════════════════════════════════════════════════════════
 
 document.addEventListener('DOMContentLoaded', () => {
