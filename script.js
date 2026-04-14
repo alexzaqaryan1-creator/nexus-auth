@@ -130,7 +130,7 @@ if (regUsername) {
 
     usernameCheckTimer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/check-username/${val}`);
+fetch(`https://nexus-auth-yulh.onrender.com/api/check-username/${val}`)
         const data = await res.json();
         if (data.available) {
           statusEl.textContent = 'Available';
