@@ -20,12 +20,22 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Supports both DATABASE_URL and individual DB_* env vars
 // ════════════════════════════════════════════════════════════════════════
 
+// Render internal hosts (dpg-...-a) do NOT use SSL
+// External hosts and DATABASE_URL with .render.com DO need SSL
+function needsSSL(host) {
+  if (!host) return false;
+  if (host === 'localhost' || host === '127.0.0.1') return false;
+  if (host.startsWith('dpg-')) return false;  // Render internal
+  return true;
+}
+
 let poolConfig;
 
 if (process.env.DATABASE_URL) {
+  const url = process.env.DATABASE_URL;
   poolConfig = {
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false }
+    connectionString: url,
+    ssl: needsSSL(new URL(url).hostname) ? { rejectUnauthorized: false } : false
   };
 } else {
   poolConfig = {
@@ -34,9 +44,7 @@ if (process.env.DATABASE_URL) {
     user:     process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
-    ssl:      process.env.DB_HOST && process.env.DB_HOST !== 'localhost'
-                ? { rejectUnauthorized: false }
-                : false
+    ssl:      needsSSL(process.env.DB_HOST) ? { rejectUnauthorized: false } : false
   };
 }
 
