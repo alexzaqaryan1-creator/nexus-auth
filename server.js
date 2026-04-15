@@ -17,14 +17,30 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ════════════════════════════════════════════════════════════════════════
 // DATABASE CONNECTION (PostgreSQL)
+// Supports both DATABASE_URL and individual DB_* env vars
 // ════════════════════════════════════════════════════════════════════════
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('localhost')
-    ? { rejectUnauthorized: false }
-    : false
-});
+let poolConfig;
+
+if (process.env.DATABASE_URL) {
+  poolConfig = {
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false }
+  };
+} else {
+  poolConfig = {
+    host:     process.env.DB_HOST,
+    port:     parseInt(process.env.DB_PORT) || 5432,
+    user:     process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    ssl:      process.env.DB_HOST && process.env.DB_HOST !== 'localhost'
+                ? { rejectUnauthorized: false }
+                : false
+  };
+}
+
+const pool = new Pool(poolConfig);
 
 // Test DB on startup
 pool.query('SELECT NOW()')
@@ -88,18 +104,33 @@ async function initTables() {
 initTables();
 
 // ════════════════════════════════════════════════════════════════════════
-// ROUTES — HEALTH CHECK
+// ROUTES — HEALTH CHECK & DIAGNOSTICS
 // ════════════════════════════════════════════════════════════════════════
 
 app.get('/api/test', async (req, res) => {
   const info = {
     server: 'running',
-    database_url_set: !!process.env.DATABASE_URL
+    connection_mode: process.env.DATABASE_URL ? 'DATABASE_URL' : 'individual vars',
+    db_host: process.env.DATABASE_URL ? '(using URL)' : (process.env.DB_HOST || 'NOT SET'),
+    db_port: process.env.DATABASE_URL ? '(using URL)' : (process.env.DB_PORT || '5432 (default)'),
+    db_name: process.env.DATABASE_URL ? '(using URL)' : (process.env.DB_NAME || 'NOT SET'),
+    db_user: process.env.DATABASE_URL ? '(using URL)' : (process.env.DB_USER || 'NOT SET'),
+    db_password_set: !!(process.env.DATABASE_URL || process.env.DB_PASSWORD)
   };
 
   try {
-    await pool.query('SELECT NOW()');
+    const timeResult = await pool.query('SELECT NOW() as time');
     info.database = 'connected';
+    info.server_time = timeResult.rows[0].time;
+
+    const tableCheck = await pool.query(`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public'
+    `);
+    info.tables = tableCheck.rows.map(r => r.table_name);
+
+    const userCount = await pool.query('SELECT COUNT(*) as count FROM users');
+    info.user_count = parseInt(userCount.rows[0].count);
   } catch (err) {
     info.database = 'FAILED';
     info.db_error = err.message;
@@ -164,6 +195,7 @@ app.post('/api/register', async (req, res) => {
 
 // ════════════════════════════════════════════════════════════════════════
 // ROUTES — LOGIN
+// Supports both bcrypt-hashed and plain-text passwords (legacy users)
 // ════════════════════════════════════════════════════════════════════════
 
 app.post('/api/login', async (req, res) => {
@@ -184,7 +216,21 @@ app.post('/api/login', async (req, res) => {
 
     const user = result.rows[0];
 
-    const passwordMatch = await bcrypt.compare(password, user.password);
+    // Check if password is bcrypt-hashed (starts with $2a$ or $2b$)
+    let passwordMatch = false;
+    if (user.password.startsWith('$2a$') || user.password.startsWith('$2b$')) {
+      passwordMatch = await bcrypt.compare(password, user.password);
+    } else {
+      // Legacy plain-text password — compare directly
+      passwordMatch = (password === user.password);
+
+      // Upgrade to bcrypt hash for next login
+      if (passwordMatch) {
+        const hashed = await bcrypt.hash(password, 12);
+        await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hashed, user.id]);
+      }
+    }
+
     if (!passwordMatch) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
@@ -216,7 +262,7 @@ app.post('/api/login', async (req, res) => {
 app.get('/api/search-users/:query', async (req, res) => {
   try {
     const { query } = req.params;
-    const excludeId = req.query.exclude || 0;
+    const excludeId = parseInt(req.query.exclude) || 0;
 
     const result = await pool.query(
       `SELECT id, first_name, last_name, username
