@@ -103,6 +103,35 @@ async function initTables() {
       )
     `);
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS group_chats (
+        id         SERIAL PRIMARY KEY,
+        name       VARCHAR(100) NOT NULL,
+        creator_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS group_members (
+        id         SERIAL PRIMARY KEY,
+        group_id   INT NOT NULL REFERENCES group_chats(id) ON DELETE CASCADE,
+        user_id    INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        joined_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(group_id, user_id)
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS group_messages (
+        id         SERIAL PRIMARY KEY,
+        group_id   INT NOT NULL REFERENCES group_chats(id) ON DELETE CASCADE,
+        sender_id  INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        message    TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     console.log('All tables ready');
   } catch (err) {
     console.error('Table init error:', err.message);
@@ -480,6 +509,164 @@ app.get('/api/messages/:user1/:user2', async (req, res) => {
     res.json({ messages: result.rows });
   } catch (err) {
     console.error('Get messages error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// ROUTES — DECLINE FRIEND REQUEST
+// ════════════════════════════════════════════════════════════════════════
+
+app.post('/api/decline-friend-request', async (req, res) => {
+  try {
+    const { request_id } = req.body;
+
+    const result = await pool.query(
+      'DELETE FROM friend_requests WHERE id = $1', [request_id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Request not found' });
+    }
+
+    res.json({ success: true, message: 'Friend request declined' });
+  } catch (err) {
+    console.error('Decline request error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// ROUTES — CREATE GROUP CHAT
+// ════════════════════════════════════════════════════════════════════════
+
+app.post('/api/create-group', async (req, res) => {
+  try {
+    const { name, creator_id, member_ids } = req.body;
+
+    if (!name || !creator_id || !member_ids || member_ids.length === 0) {
+      return res.status(400).json({ error: 'Group name and members are required' });
+    }
+
+    const groupResult = await pool.query(
+      'INSERT INTO group_chats (name, creator_id) VALUES ($1, $2) RETURNING id',
+      [name, creator_id]
+    );
+    const groupId = groupResult.rows[0].id;
+
+    // Add creator as member
+    await pool.query(
+      'INSERT INTO group_members (group_id, user_id) VALUES ($1, $2)',
+      [groupId, creator_id]
+    );
+
+    // Add other members
+    for (const memberId of member_ids) {
+      await pool.query(
+        'INSERT INTO group_members (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [groupId, memberId]
+      );
+    }
+
+    res.status(201).json({ success: true, group_id: groupId });
+  } catch (err) {
+    console.error('Create group error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// ROUTES — GET USER'S GROUP CHATS
+// ════════════════════════════════════════════════════════════════════════
+
+app.get('/api/groups/:user_id', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+
+    const result = await pool.query(
+      `SELECT gc.id, gc.name, gc.creator_id, gc.created_at
+       FROM group_chats gc
+       JOIN group_members gm ON gc.id = gm.group_id
+       WHERE gm.user_id = $1
+       ORDER BY gc.created_at DESC`,
+      [user_id]
+    );
+
+    res.json({ groups: result.rows });
+  } catch (err) {
+    console.error('Get groups error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// ROUTES — GET GROUP MEMBERS
+// ════════════════════════════════════════════════════════════════════════
+
+app.get('/api/group-members/:group_id', async (req, res) => {
+  try {
+    const { group_id } = req.params;
+
+    const result = await pool.query(
+      `SELECT u.id, u.first_name, u.last_name, u.username
+       FROM group_members gm
+       JOIN users u ON gm.user_id = u.id
+       WHERE gm.group_id = $1`,
+      [group_id]
+    );
+
+    res.json({ members: result.rows });
+  } catch (err) {
+    console.error('Get group members error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// ROUTES — SEND GROUP MESSAGE
+// ════════════════════════════════════════════════════════════════════════
+
+app.post('/api/send-group-message', async (req, res) => {
+  try {
+    const { group_id, sender_id, message } = req.body;
+
+    if (!group_id || !sender_id || !message || message.trim().length === 0) {
+      return res.status(400).json({ error: 'Missing fields' });
+    }
+
+    await pool.query(
+      'INSERT INTO group_messages (group_id, sender_id, message) VALUES ($1, $2, $3)',
+      [group_id, sender_id, message.trim()]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Send group message error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// ROUTES — GET GROUP MESSAGES
+// ════════════════════════════════════════════════════════════════════════
+
+app.get('/api/group-messages/:group_id', async (req, res) => {
+  try {
+    const { group_id } = req.params;
+
+    const result = await pool.query(
+      `SELECT gm.id, gm.sender_id, gm.message, gm.created_at,
+              u.username, u.first_name
+       FROM group_messages gm
+       JOIN users u ON gm.sender_id = u.id
+       WHERE gm.group_id = $1
+       ORDER BY gm.created_at ASC`,
+      [group_id]
+    );
+
+    res.json({ messages: result.rows });
+  } catch (err) {
+    console.error('Get group messages error:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });

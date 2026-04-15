@@ -1,14 +1,23 @@
 // ════════════════════════════════════════════════════════════════════════
-// PAGE NAVIGATION
+// STATE
 // ════════════════════════════════════════════════════════════════════════
 
 let currentUser = null;
+let currentConvoUser = null;
+let currentGroupId = null;
+let messagePolling = null;
+
+// ════════════════════════════════════════════════════════════════════════
+// PAGE NAVIGATION
+// ════════════════════════════════════════════════════════════════════════
 
 function showPage(pageId) {
-  document.querySelectorAll('.page').forEach(p => {
-    p.style.display = 'none';
-  });
-  document.getElementById(pageId).style.display = 'block';
+  if (messagePolling) { clearInterval(messagePolling); messagePolling = null; }
+  document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
+  const page = document.getElementById(pageId);
+  if (page) {
+    page.style.display = (pageId === 'page-convo' || pageId === 'page-group-convo') ? 'flex' : 'block';
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -17,6 +26,7 @@ function showPage(pageId) {
 
 function showAlert(id, message, type) {
   const el = document.getElementById(id);
+  if (!el) return;
   el.textContent = message;
   el.className = `alert alert-${type}`;
   el.classList.remove('hidden');
@@ -24,22 +34,7 @@ function showAlert(id, message, type) {
 
 function hideAlert(id) {
   const el = document.getElementById(id);
-  el.classList.add('hidden');
-}
-
-function setLoading(btnId, loaderId, isLoading) {
-  const btn = document.getElementById(btnId);
-  const loader = document.getElementById(loaderId);
-  const text = btn.querySelector('.btn-text');
-  if (isLoading) {
-    btn.disabled = true;
-    loader.classList.remove('hidden');
-    text.style.opacity = '0';
-  } else {
-    btn.disabled = false;
-    loader.classList.add('hidden');
-    text.style.opacity = '1';
-  }
+  if (el) el.classList.add('hidden');
 }
 
 function showFieldError(id, message) {
@@ -48,34 +43,36 @@ function showFieldError(id, message) {
 }
 
 function clearFieldErrors() {
-  document.querySelectorAll('.field-err').forEach(el => {
-    el.textContent = '';
-  });
+  document.querySelectorAll('.field-err').forEach(el => el.textContent = '');
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return 'N/A';
+  return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function formatTime(dateStr) {
+  return new Date(dateStr).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+}
+
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good Morning';
+  if (h < 18) return 'Good Afternoon';
+  return 'Good Evening';
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// PASSWORD TOGGLE (Show / Hide)
+// PASSWORD TOGGLE
 // ════════════════════════════════════════════════════════════════════════
 
 document.querySelectorAll('.toggle-pw').forEach(btn => {
   btn.addEventListener('click', () => {
-    const targetId = btn.getAttribute('data-target');
-    const input = document.getElementById(targetId);
-    if (input.type === 'password') {
-      input.type = 'text';
-      btn.textContent = 'Hide';
-    } else {
-      input.type = 'password';
-      btn.textContent = 'Show';
-    }
+    const input = document.getElementById(btn.getAttribute('data-target'));
+    if (input.type === 'password') { input.type = 'text'; btn.textContent = 'Hide'; }
+    else { input.type = 'password'; btn.textContent = 'Show'; }
   });
 });
-
-// ════════════════════════════════════════════════════════════════════════
-// PASSWORD STRENGTH INDICATOR (KEPT FOR REFERENCE, NO COLORS/MESSAGES)
-// ════════════════════════════════════════════════════════════════════════
-
-// Username live check COMPLETELY REMOVED — no colors, no messages
 
 // ════════════════════════════════════════════════════════════════════════
 // LOGIN FORM
@@ -93,20 +90,9 @@ if (loginForm) {
     const password = document.getElementById('login-password').value;
 
     let valid = true;
-
-    if (!username) {
-      showFieldError('err-login-username', 'Username is required');
-      valid = false;
-    }
-
-    if (!password) {
-      showFieldError('err-login-password', 'Password is required');
-      valid = false;
-    }
-
+    if (!username) { showFieldError('err-login-username', 'Username is required'); valid = false; }
+    if (!password) { showFieldError('err-login-password', 'Password is required'); valid = false; }
     if (!valid) return;
-
-    setLoading('login-btn', 'login-btn', true);
 
     try {
       const res = await fetch('/api/login', {
@@ -114,7 +100,6 @@ if (loginForm) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
-
       const data = await res.json();
 
       if (!res.ok) {
@@ -122,14 +107,10 @@ if (loginForm) {
       } else {
         showAlert('login-success', 'Login successful! Redirecting...', 'success');
         currentUser = data.user;
-        setTimeout(() => {
-          loadDashboard(data.user);
-        }, 800);
+        setTimeout(() => loadDashboard(data.user), 800);
       }
     } catch (err) {
       showAlert('login-error', 'Could not connect to server', 'error');
-    } finally {
-      setLoading('login-btn', 'login-btn', false);
     }
   });
 }
@@ -155,25 +136,18 @@ if (registerForm) {
     const confirm    = document.getElementById('reg-confirm').value;
 
     let valid = true;
-
     if (!first_name) { showFieldError('err-firstname', 'First name is required'); valid = false; }
     if (!last_name)  { showFieldError('err-lastname', 'Last name is required'); valid = false; }
     if (!username)   { showFieldError('err-username', 'Username is required'); valid = false; }
     if (!email)      { showFieldError('err-email', 'Email is required'); valid = false; }
     if (!dob)        { showFieldError('err-dob', 'Date of birth is required'); valid = false; }
     if (!password)   { showFieldError('err-reg-password', 'Password is required'); valid = false; }
-
-    if (password && confirm && password !== confirm) {
-      showFieldError('err-confirm', 'Passwords do not match');
-      valid = false;
-    }
-
+    if (password && confirm && password !== confirm) { showFieldError('err-confirm', 'Passwords do not match'); valid = false; }
     if (!valid) return;
 
     const regBtn = document.getElementById('reg-btn');
     regBtn.disabled = true;
-    const btnText = regBtn.querySelector('.btn-text');
-    btnText.textContent = 'Creating...';
+    regBtn.querySelector('.btn-text').textContent = 'Creating...';
 
     try {
       const res = await fetch('/api/register', {
@@ -181,7 +155,6 @@ if (registerForm) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ first_name, last_name, username, email, dob, password, confirm })
       });
-
       const data = await res.json();
 
       if (!res.ok) {
@@ -189,15 +162,13 @@ if (registerForm) {
       } else {
         showAlert('reg-success', 'Account created! Redirecting to login...', 'success');
         registerForm.reset();
-        setTimeout(() => {
-          showPage('page-login');
-        }, 1500);
+        setTimeout(() => showPage('page-login'), 1500);
       }
     } catch (err) {
       showAlert('reg-error', 'Could not connect to server', 'error');
     } finally {
       regBtn.disabled = false;
-      btnText.textContent = 'Create Account';
+      regBtn.querySelector('.btn-text').textContent = 'Create Account';
     }
   });
 }
@@ -206,54 +177,58 @@ if (registerForm) {
 // NAVIGATION BUTTONS
 // ════════════════════════════════════════════════════════════════════════
 
-const goRegister = document.getElementById('go-register');
-if (goRegister) {
-  goRegister.addEventListener('click', () => {
-    hideAlert('login-error');
-    hideAlert('login-success');
-    clearFieldErrors();
-    showPage('page-register');
-  });
-}
+document.getElementById('go-register')?.addEventListener('click', () => {
+  hideAlert('login-error'); hideAlert('login-success'); clearFieldErrors();
+  showPage('page-register');
+});
 
-const goLoginFromReg = document.getElementById('go-login-from-reg');
-if (goLoginFromReg) {
-  goLoginFromReg.addEventListener('click', () => {
-    hideAlert('reg-error');
-    hideAlert('reg-success');
-    clearFieldErrors();
-    showPage('page-login');
-  });
-}
+document.getElementById('go-login-from-reg')?.addEventListener('click', () => {
+  hideAlert('reg-error'); hideAlert('reg-success'); clearFieldErrors();
+  showPage('page-login');
+});
 
-// Chat button
-const chatBtn = document.getElementById('chat-btn');
-if (chatBtn) {
-  chatBtn.addEventListener('click', () => {
-    showPage('page-chat');
-    loadChatPage();
-  });
-}
+document.getElementById('chat-btn')?.addEventListener('click', () => {
+  showPage('page-chat');
+  loadChatPage();
+});
 
-// Back from chat
-const backFromChat = document.getElementById('back-from-chat');
-if (backFromChat) {
-  backFromChat.addEventListener('click', () => {
-    showPage('page-dashboard');
+document.getElementById('back-from-chat')?.addEventListener('click', () => {
+  showPage('page-dashboard');
+});
+
+document.getElementById('back-from-convo')?.addEventListener('click', () => {
+  showPage('page-chat');
+  loadChatPage();
+});
+
+document.getElementById('back-from-group-convo')?.addEventListener('click', () => {
+  showPage('page-chat');
+  loadChatPage();
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// CHAT TABS
+// ════════════════════════════════════════════════════════════════════════
+
+document.querySelectorAll('.chat-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.chat-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById(tab.dataset.tab)?.classList.add('active');
   });
-}
+});
 
 // ════════════════════════════════════════════════════════════════════════
 // DASHBOARD
 // ════════════════════════════════════════════════════════════════════════
 
 function loadDashboard(user) {
-  const greeting = getGreeting();
   const fullName = `${user.first_name} ${user.last_name}`;
   const initials = (user.first_name[0] || '') + (user.last_name[0] || '');
 
   document.getElementById('wc-avatar').textContent   = initials.toUpperCase();
-  document.getElementById('wc-greeting').textContent = greeting + ',';
+  document.getElementById('wc-greeting').textContent = getGreeting() + ',';
   document.getElementById('wc-name').textContent     = fullName;
   document.getElementById('wc-handle').textContent   = '@' + user.username;
   document.getElementById('nav-username').textContent = '@' + user.username;
@@ -266,106 +241,426 @@ function loadDashboard(user) {
   startClock();
 }
 
-function getGreeting() {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Good Morning';
-  if (hour < 18) return 'Good Afternoon';
-  return 'Good Evening';
-}
+// ════════════════════════════════════════════════════════════════════════
+// CHAT PAGE — Load all data
+// ════════════════════════════════════════════════════════════════════════
 
-function formatDate(dateStr) {
-  if (!dateStr) return 'N/A';
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
+async function loadChatPage() {
+  await Promise.all([loadFriendsList(), loadNotifications(), loadGroupsList()]);
+  setupSearch();
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// CHAT FEATURE
+// FRIENDS LIST
 // ════════════════════════════════════════════════════════════════════════
 
-function loadChatPage() {
-  const searchInput = document.getElementById('user-search');
-  const searchBtn = document.getElementById('search-btn');
-
-  if (searchBtn) {
-    searchBtn.addEventListener('click', searchUsers);
-  }
-  
-  if (searchInput) {
-    searchInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') searchUsers();
-    });
-  }
-}
-
-async function searchUsers() {
-  const searchInput = document.getElementById('user-search');
-  const query = searchInput.value.trim();
-
-  if (!query || query.length < 1) {
-    alert('Enter a username to search');
-    return;
-  }
-
+async function loadFriendsList() {
+  const container = document.getElementById('friends-list');
   try {
-    const res = await fetch(`/api/search-users/${query}?exclude=${currentUser.id}`);
+    const res = await fetch(`/api/friends/${currentUser.id}`);
     const data = await res.json();
 
-    const resultsList = document.getElementById('search-results');
-    resultsList.innerHTML = '';
-
-    if (data.users.length === 0) {
-      resultsList.innerHTML = '<p style="color: var(--muted); text-align: center;">No users found</p>';
+    if (data.friends.length === 0) {
+      container.innerHTML = '<p class="empty-msg">No friends yet. Search for users and add them!</p>';
       return;
     }
 
-    data.users.forEach(user => {
-      const userDiv = document.createElement('div');
-      userDiv.className = 'user-card';
-      userDiv.innerHTML = `
-        <div>
-          <div style="font-weight: 600;">${user.first_name} ${user.last_name}</div>
-          <div style="color: var(--muted); font-size: 0.9rem;">@${user.username}</div>
+    container.innerHTML = '';
+    data.friends.forEach(friend => {
+      const card = document.createElement('div');
+      card.className = 'user-card';
+      card.innerHTML = `
+        <div class="user-card-info">
+          <div class="user-card-name">${friend.first_name} ${friend.last_name}</div>
+          <div class="user-card-handle">@${friend.username}</div>
         </div>
-        <button class="btn-add-friend" data-user-id="${user.id}">
-          Add Friend
-        </button>
+        <div class="user-card-actions">
+          <button class="btn-sm chat-open">Chat</button>
+        </div>
       `;
-      resultsList.appendChild(userDiv);
-
-      const addBtn = userDiv.querySelector('.btn-add-friend');
-      addBtn.addEventListener('click', () => sendFriendRequest(user.id, user.username));
+      card.querySelector('.chat-open').addEventListener('click', () => openConversation(friend));
+      container.appendChild(card);
     });
   } catch (err) {
-    alert('Error searching users');
+    container.innerHTML = '<p class="empty-msg">Error loading friends</p>';
   }
 }
 
-async function sendFriendRequest(recipientId, username) {
-  try {
-    const res = await fetch('/api/send-friend-request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sender_id: currentUser.id,
-        recipient_id: recipientId
-      })
-    });
+// ════════════════════════════════════════════════════════════════════════
+// NOTIFICATIONS (Friend Requests)
+// ════════════════════════════════════════════════════════════════════════
 
+async function loadNotifications() {
+  const container = document.getElementById('requests-list');
+  const badge = document.getElementById('req-badge');
+
+  try {
+    const res = await fetch(`/api/notifications/${currentUser.id}`);
     const data = await res.json();
 
+    if (data.notifications.length === 0) {
+      container.innerHTML = '<p class="empty-msg">No pending requests.</p>';
+      badge.classList.add('hidden');
+      return;
+    }
+
+    badge.textContent = data.notifications.length;
+    badge.classList.remove('hidden');
+
+    container.innerHTML = '';
+    data.notifications.forEach(req => {
+      const card = document.createElement('div');
+      card.className = 'user-card';
+      card.innerHTML = `
+        <div class="user-card-info">
+          <div class="user-card-name">${req.first_name} ${req.last_name}</div>
+          <div class="user-card-handle">@${req.username}</div>
+        </div>
+        <div class="user-card-actions">
+          <button class="btn-sm success">Accept</button>
+          <button class="btn-sm danger">Decline</button>
+        </div>
+      `;
+      card.querySelector('.success').addEventListener('click', () => acceptRequest(req.id));
+      card.querySelector('.danger').addEventListener('click', () => declineRequest(req.id));
+      container.appendChild(card);
+    });
+  } catch (err) {
+    container.innerHTML = '<p class="empty-msg">Error loading requests</p>';
+  }
+}
+
+async function acceptRequest(requestId) {
+  try {
+    const res = await fetch('/api/accept-friend-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ request_id: requestId })
+    });
     if (res.ok) {
-      alert(`Friend request sent to @${username}`);
+      await Promise.all([loadNotifications(), loadFriendsList()]);
+    }
+  } catch (err) { /* ignore */ }
+}
+
+async function declineRequest(requestId) {
+  try {
+    const res = await fetch('/api/decline-friend-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ request_id: requestId })
+    });
+    if (res.ok) {
+      await loadNotifications();
+    }
+  } catch (err) { /* ignore */ }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// SEARCH USERS
+// ════════════════════════════════════════════════════════════════════════
+
+function setupSearch() {
+  const searchBtn = document.getElementById('search-btn');
+  const searchInput = document.getElementById('user-search');
+
+  // Remove old listeners by cloning
+  const newBtn = searchBtn.cloneNode(true);
+  searchBtn.parentNode.replaceChild(newBtn, searchBtn);
+  const newInput = searchInput.cloneNode(true);
+  searchInput.parentNode.replaceChild(newInput, searchInput);
+
+  newBtn.addEventListener('click', searchUsers);
+  newInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') searchUsers(); });
+}
+
+async function searchUsers() {
+  const query = document.getElementById('user-search').value.trim();
+  if (!query) return;
+
+  const container = document.getElementById('search-results');
+
+  try {
+    const res = await fetch(`/api/search-users/${encodeURIComponent(query)}?exclude=${currentUser.id}`);
+    const data = await res.json();
+
+    if (data.users.length === 0) {
+      container.innerHTML = '<p class="empty-msg">No users found</p>';
+      return;
+    }
+
+    container.innerHTML = '';
+    data.users.forEach(user => {
+      const card = document.createElement('div');
+      card.className = 'user-card';
+      card.innerHTML = `
+        <div class="user-card-info">
+          <div class="user-card-name">${user.first_name} ${user.last_name}</div>
+          <div class="user-card-handle">@${user.username}</div>
+        </div>
+        <div class="user-card-actions">
+          <button class="btn-sm primary">Add Friend</button>
+        </div>
+      `;
+      card.querySelector('.btn-sm').addEventListener('click', async (e) => {
+        const btn = e.target;
+        try {
+          const res = await fetch('/api/send-friend-request', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sender_id: currentUser.id, recipient_id: user.id })
+          });
+          const data = await res.json();
+          btn.textContent = res.ok ? 'Sent!' : (data.error || 'Error');
+          btn.disabled = true;
+        } catch (err) {
+          btn.textContent = 'Error';
+        }
+      });
+      container.appendChild(card);
+    });
+  } catch (err) {
+    container.innerHTML = '<p class="empty-msg">Error searching</p>';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// DIRECT MESSAGE CONVERSATION
+// ════════════════════════════════════════════════════════════════════════
+
+function openConversation(friend) {
+  currentConvoUser = friend;
+  document.getElementById('convo-title').textContent = `${friend.first_name} ${friend.last_name}`;
+  showPage('page-convo');
+  loadMessages();
+
+  // Poll for new messages every 3 seconds
+  messagePolling = setInterval(loadMessages, 3000);
+
+  // Send button
+  const sendBtn = document.getElementById('convo-send');
+  const newBtn = sendBtn.cloneNode(true);
+  sendBtn.parentNode.replaceChild(newBtn, sendBtn);
+  newBtn.addEventListener('click', sendMessage);
+
+  const input = document.getElementById('convo-input');
+  const newInput = input.cloneNode(true);
+  input.parentNode.replaceChild(newInput, input);
+  newInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+}
+
+async function loadMessages() {
+  if (!currentConvoUser) return;
+  const container = document.getElementById('convo-messages');
+  const wasAtBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 30;
+
+  try {
+    const res = await fetch(`/api/messages/${currentUser.id}/${currentConvoUser.id}`);
+    const data = await res.json();
+
+    container.innerHTML = '';
+    if (data.messages.length === 0) {
+      container.innerHTML = '<p class="empty-msg">No messages yet. Say hello!</p>';
+      return;
+    }
+
+    data.messages.forEach(msg => {
+      const isMine = msg.sender_id === currentUser.id;
+      const bubble = document.createElement('div');
+      bubble.className = `msg-bubble ${isMine ? 'sent' : 'received'}`;
+      bubble.innerHTML = `${msg.message}<div class="msg-meta">${formatTime(msg.created_at)}</div>`;
+      container.appendChild(bubble);
+    });
+
+    if (wasAtBottom) container.scrollTop = container.scrollHeight;
+  } catch (err) { /* ignore */ }
+}
+
+async function sendMessage() {
+  const input = document.getElementById('convo-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  try {
+    await fetch('/api/send-message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sender_id: currentUser.id, recipient_id: currentConvoUser.id, message: msg })
+    });
+    input.value = '';
+    await loadMessages();
+    document.getElementById('convo-messages').scrollTop = document.getElementById('convo-messages').scrollHeight;
+  } catch (err) { /* ignore */ }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// GROUP CHATS
+// ════════════════════════════════════════════════════════════════════════
+
+async function loadGroupsList() {
+  const container = document.getElementById('groups-list');
+  try {
+    const res = await fetch(`/api/groups/${currentUser.id}`);
+    const data = await res.json();
+
+    if (data.groups.length === 0) {
+      container.innerHTML = '<p class="empty-msg">No group chats yet.</p>';
+      return;
+    }
+
+    container.innerHTML = '';
+    data.groups.forEach(group => {
+      const card = document.createElement('div');
+      card.className = 'user-card';
+      card.innerHTML = `
+        <div class="user-card-info">
+          <div class="user-card-name">${group.name}</div>
+          <div class="user-card-handle">Group Chat</div>
+        </div>
+        <div class="user-card-actions">
+          <button class="btn-sm chat-open">Open</button>
+        </div>
+      `;
+      card.querySelector('.chat-open').addEventListener('click', () => openGroupConvo(group));
+      container.appendChild(card);
+    });
+  } catch (err) {
+    container.innerHTML = '<p class="empty-msg">Error loading groups</p>';
+  }
+}
+
+// Create Group Modal
+document.getElementById('create-group-btn')?.addEventListener('click', async () => {
+  const modal = document.getElementById('modal-create-group');
+  const checkboxContainer = document.getElementById('group-friend-checkboxes');
+  document.getElementById('group-name-input').value = '';
+
+  // Load friends as checkboxes
+  try {
+    const res = await fetch(`/api/friends/${currentUser.id}`);
+    const data = await res.json();
+
+    if (data.friends.length === 0) {
+      checkboxContainer.innerHTML = '<p class="empty-msg" style="margin:0;">Add friends first to create a group.</p>';
     } else {
-      alert(data.error || 'Error sending request');
+      checkboxContainer.innerHTML = '';
+      data.friends.forEach(friend => {
+        const label = document.createElement('label');
+        label.className = 'checkbox-item';
+        label.innerHTML = `
+          <input type="checkbox" value="${friend.id}">
+          <span>${friend.first_name} ${friend.last_name} (@${friend.username})</span>
+        `;
+        checkboxContainer.appendChild(label);
+      });
     }
   } catch (err) {
-    alert('Error sending friend request');
+    checkboxContainer.innerHTML = '<p class="empty-msg" style="margin:0;">Error loading friends</p>';
   }
+
+  modal.classList.remove('hidden');
+});
+
+document.getElementById('modal-create-group-cancel')?.addEventListener('click', () => {
+  document.getElementById('modal-create-group').classList.add('hidden');
+});
+
+document.getElementById('modal-create-group-ok')?.addEventListener('click', async () => {
+  const name = document.getElementById('group-name-input').value.trim();
+  const checkboxes = document.querySelectorAll('#group-friend-checkboxes input[type="checkbox"]:checked');
+  const memberIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+  if (!name) { alert('Please enter a group name'); return; }
+  if (memberIds.length === 0) { alert('Select at least one friend'); return; }
+
+  try {
+    const res = await fetch('/api/create-group', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, creator_id: currentUser.id, member_ids: memberIds })
+    });
+
+    if (res.ok) {
+      document.getElementById('modal-create-group').classList.add('hidden');
+      await loadGroupsList();
+    } else {
+      const data = await res.json();
+      alert(data.error || 'Error creating group');
+    }
+  } catch (err) {
+    alert('Error creating group');
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// GROUP CONVERSATION
+// ════════════════════════════════════════════════════════════════════════
+
+function openGroupConvo(group) {
+  currentGroupId = group.id;
+  document.getElementById('group-convo-title').textContent = group.name;
+  showPage('page-group-convo');
+  loadGroupMessages();
+
+  messagePolling = setInterval(loadGroupMessages, 3000);
+
+  const sendBtn = document.getElementById('group-convo-send');
+  const newBtn = sendBtn.cloneNode(true);
+  sendBtn.parentNode.replaceChild(newBtn, sendBtn);
+  newBtn.addEventListener('click', sendGroupMessage);
+
+  const input = document.getElementById('group-convo-input');
+  const newInput = input.cloneNode(true);
+  input.parentNode.replaceChild(newInput, input);
+  newInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendGroupMessage(); });
+}
+
+async function loadGroupMessages() {
+  if (!currentGroupId) return;
+  const container = document.getElementById('group-convo-messages');
+  const wasAtBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 30;
+
+  try {
+    const res = await fetch(`/api/group-messages/${currentGroupId}`);
+    const data = await res.json();
+
+    container.innerHTML = '';
+    if (data.messages.length === 0) {
+      container.innerHTML = '<p class="empty-msg">No messages yet. Start the conversation!</p>';
+      return;
+    }
+
+    data.messages.forEach(msg => {
+      const isMine = msg.sender_id === currentUser.id;
+      const bubble = document.createElement('div');
+      bubble.className = `msg-bubble ${isMine ? 'sent' : 'received'}`;
+      bubble.innerHTML = `
+        ${!isMine ? `<div class="msg-sender">${msg.first_name}</div>` : ''}
+        ${msg.message}
+        <div class="msg-meta">${formatTime(msg.created_at)}</div>
+      `;
+      container.appendChild(bubble);
+    });
+
+    if (wasAtBottom) container.scrollTop = container.scrollHeight;
+  } catch (err) { /* ignore */ }
+}
+
+async function sendGroupMessage() {
+  const input = document.getElementById('group-convo-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  try {
+    await fetch('/api/send-group-message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ group_id: currentGroupId, sender_id: currentUser.id, message: msg })
+    });
+    input.value = '';
+    await loadGroupMessages();
+    document.getElementById('group-convo-messages').scrollTop = document.getElementById('group-convo-messages').scrollHeight;
+  } catch (err) { /* ignore */ }
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -381,8 +676,8 @@ function startClock() {
     const h = String(now.getHours()).padStart(2, '0');
     const m = String(now.getMinutes()).padStart(2, '0');
     const s = String(now.getSeconds()).padStart(2, '0');
-    const clockEl = document.getElementById('live-clock');
-    if (clockEl) clockEl.textContent = `${h}:${m}:${s}`;
+    const el = document.getElementById('live-clock');
+    if (el) el.textContent = `${h}:${m}:${s}`;
   }, 1000);
 }
 
@@ -390,16 +685,16 @@ function startClock() {
 // LOGOUT
 // ════════════════════════════════════════════════════════════════════════
 
-const logoutBtn = document.getElementById('logout-btn');
-if (logoutBtn) {
-  logoutBtn.addEventListener('click', () => {
-    if (clockInterval) clearInterval(clockInterval);
-    currentUser = null;
-    showPage('page-login');
-    loginForm.reset();
-    clearFieldErrors();
-  });
-}
+document.getElementById('logout-btn')?.addEventListener('click', () => {
+  if (clockInterval) clearInterval(clockInterval);
+  if (messagePolling) clearInterval(messagePolling);
+  currentUser = null;
+  currentConvoUser = null;
+  currentGroupId = null;
+  showPage('page-login');
+  loginForm?.reset();
+  clearFieldErrors();
+});
 
 // ════════════════════════════════════════════════════════════════════════
 // INITIALIZE

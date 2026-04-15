@@ -279,8 +279,6 @@
   <!-- PAGE: DASHBOARD (User Account) -->
   <!-- ════════════════════════════════════════════════════════════════════════ -->
   <div id="page-dashboard" class="page">
-    
-    <!-- Top Navigation -->
     <nav class="top-nav">
       <div class="form-logo">NEXUS</div>
       <div class="nav-right">
@@ -288,16 +286,8 @@
         <button id="logout-btn" class="btn-logout">Logout</button>
       </div>
     </nav>
-<!-- Chat Button -->
-      <div style="margin-top: 30px; display: flex; gap: 12px; flex-wrap: wrap;">
-        <button id="chat-btn" class="btn-primary" style="flex: 1; min-width: 150px;">
-          💬 Open Chat
-        </button>
-      </div>
-    <!-- Dashboard Body -->
+
     <div class="dashboard-body">
-      
-      <!-- Welcome Card -->
       <div class="welcome-card">
         <div class="wc-avatar" id="wc-avatar">J</div>
         <div class="wc-text">
@@ -307,7 +297,6 @@
         </div>
       </div>
 
-      <!-- Info Grid -->
       <div class="info-grid">
         <div class="info-card">
           <div class="info-label">Email</div>
@@ -327,7 +316,6 @@
         </div>
       </div>
 
-      <!-- Clock Bar -->
       <div class="clock-bar">
         <div>
           <div class="clock-label">Current Time</div>
@@ -335,156 +323,201 @@
         </div>
       </div>
 
+      <div style="margin-top: 24px;">
+        <button id="chat-btn" class="btn-primary" style="max-width: 300px;">Open Chat</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- PAGE: CHAT (Main hub — tabs for Friends, Requests, Search, Groups) -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <div id="page-chat" class="page">
+    <nav class="top-nav">
+      <button id="back-from-chat" class="btn-back">Back</button>
+      <div class="form-logo">NEXUS Chat</div>
+      <div style="width: 80px;"></div>
+    </nav>
+
+    <div class="chat-tabs">
+      <button class="chat-tab active" data-tab="tab-friends">Friends</button>
+      <button class="chat-tab" data-tab="tab-requests">Requests <span id="req-badge" class="badge hidden">0</span></button>
+      <button class="chat-tab" data-tab="tab-search">Search</button>
+      <button class="chat-tab" data-tab="tab-groups">Groups</button>
+    </div>
+
+    <div class="chat-body">
+      <!-- TAB: Friends List -->
+      <div id="tab-friends" class="tab-panel active">
+        <div class="chat-container">
+          <div id="friends-list" class="card-list">
+            <p class="empty-msg">No friends yet. Search for users and add them!</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: Friend Requests -->
+      <div id="tab-requests" class="tab-panel">
+        <div class="chat-container">
+          <div id="requests-list" class="card-list">
+            <p class="empty-msg">No pending requests.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: Search Users -->
+      <div id="tab-search" class="tab-panel">
+        <div class="chat-container">
+          <div class="search-wrapper">
+            <input type="text" id="user-search" placeholder="Search by username..." class="search-input">
+            <button id="search-btn" class="btn-primary" style="width: auto; padding: 12px 24px; margin: 0;">Search</button>
+          </div>
+          <div id="search-results" class="card-list">
+            <p class="empty-msg">Search for users to add as friends</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: Group Chats -->
+      <div id="tab-groups" class="tab-panel">
+        <div class="chat-container">
+          <button id="create-group-btn" class="btn-primary" style="margin-bottom: 20px; max-width: 250px;">+ New Group Chat</button>
+          <div id="groups-list" class="card-list">
+            <p class="empty-msg">No group chats yet.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- PAGE: CONVERSATION (DM between two users) -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <div id="page-convo" class="page">
+    <nav class="top-nav">
+      <button id="back-from-convo" class="btn-back">Back</button>
+      <div class="form-logo" id="convo-title">Chat</div>
+      <div style="width: 80px;"></div>
+    </nav>
+    <div class="convo-messages" id="convo-messages"></div>
+    <div class="convo-input-bar">
+      <input type="text" id="convo-input" placeholder="Type a message..." class="search-input" style="flex:1;">
+      <button id="convo-send" class="btn-primary" style="width: auto; padding: 12px 24px; margin: 0;">Send</button>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- PAGE: GROUP CONVERSATION -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <div id="page-group-convo" class="page">
+    <nav class="top-nav">
+      <button id="back-from-group-convo" class="btn-back">Back</button>
+      <div class="form-logo" id="group-convo-title">Group Chat</div>
+      <div style="width: 80px;"></div>
+    </nav>
+    <div class="convo-messages" id="group-convo-messages"></div>
+    <div class="convo-input-bar">
+      <input type="text" id="group-convo-input" placeholder="Type a message..." class="search-input" style="flex:1;">
+      <button id="group-convo-send" class="btn-primary" style="width: auto; padding: 12px 24px; margin: 0;">Send</button>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- MODAL: Create Group Chat -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <div id="modal-create-group" class="modal hidden">
+    <div class="modal-content">
+      <h2 style="margin-bottom: 16px; font-family: var(--font-head);">Create Group Chat</h2>
+      <div class="field-group">
+        <label for="group-name-input">Group Name</label>
+        <input type="text" id="group-name-input" placeholder="Enter group name">
+      </div>
+      <p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 12px;">Select friends to add:</p>
+      <div id="group-friend-checkboxes" class="card-list" style="max-height: 200px; overflow-y: auto; margin-bottom: 16px;"></div>
+      <div style="display: flex; gap: 12px;">
+        <button id="modal-create-group-ok" class="btn-primary" style="flex:1;">Create</button>
+        <button id="modal-create-group-cancel" class="btn-secondary" style="flex:1;">Cancel</button>
+      </div>
     </div>
   </div>
 
   <!-- Load JavaScript -->
   <script src="script.js"></script>
 
-  <!-- ════════════════════════════════════════════════════════════════════════ -->
-  <!-- PAGE: CHAT -->
-  <!-- ════════════════════════════════════════════════════════════════════════ -->
-  <div id="page-chat" class="page">
-    
-    <!-- Top Navigation -->
-    <nav class="top-nav">
-      <button id="back-from-chat" class="btn-back">← Back</button>
-      <div class="form-logo">NEXUS Chat</div>
-      <div style="width: 80px;"></div>
-    </nav>
-
-    <!-- Chat Body -->
-    <div class="chat-body">
-      
-      <!-- Search Users Section -->
-      <div class="chat-container">
-        <h2 style="margin-bottom: 20px; font-size: 1.4rem;">Find Friends</h2>
-        
-        <div class="search-wrapper">
-          <input 
-            type="text" 
-            id="user-search" 
-            placeholder="Search by username..." 
-            class="search-input"
-          >
-          <button id="search-btn" class="btn-primary" style="width: auto; padding: 12px 24px; margin: 0;">
-            Search
-          </button>
-        </div>
-
-        <!-- Search Results -->
-        <div id="search-results" class="search-results">
-          <p style="color: var(--muted); text-align: center; margin-top: 40px;">Search for users to add as friends</p>
-        </div>
-      </div>
-
-    </div>
-  </div>
-
   <style>
-    .chat-body {
-      flex: 1;
-      overflow-y: auto;
-      padding: 30px 20px;
-      background: var(--bg-primary);
-    }
+    /* Chat Tabs */
+    .chat-tabs { display: flex; background: var(--bg-secondary); border-bottom: 1px solid var(--border); overflow-x: auto; }
+    .chat-tab { flex: 1; padding: 14px 12px; background: none; border: none; color: var(--muted); font-family: var(--font-body); font-size: 0.9rem; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.3s; white-space: nowrap; position: relative; }
+    .chat-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+    .chat-tab:hover { color: var(--text-primary); }
+    .badge { background: var(--danger); color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; margin-left: 4px; }
+    .badge.hidden { display: none; }
 
-    .chat-container {
-      max-width: 600px;
-      margin: 0 auto;
-    }
+    /* Tab Panels */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
 
-    .search-wrapper {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 30px;
-    }
+    /* Chat Body */
+    .chat-body { flex: 1; overflow-y: auto; padding: 24px 20px; background: var(--bg-primary); }
+    .chat-container { max-width: 600px; margin: 0 auto; }
+    .card-list { display: flex; flex-direction: column; gap: 12px; }
+    .empty-msg { color: var(--muted); text-align: center; margin-top: 40px; }
 
-    .search-input {
-      flex: 1;
-      padding: 12px 16px;
-      background: var(--bg-tertiary);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text-primary);
-      font-family: var(--font-body);
-      font-size: 1rem;
-    }
+    /* Search */
+    .search-wrapper { display: flex; gap: 12px; margin-bottom: 24px; }
+    .search-input { flex: 1; padding: 12px 16px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-family: var(--font-body); font-size: 1rem; }
+    .search-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12); }
 
-    .search-input:focus {
-      outline: none;
-      border-color: var(--primary);
-      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
-    }
+    /* User / Friend Cards */
+    .user-card { display: flex; justify-content: space-between; align-items: center; padding: 16px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; transition: all 0.3s; }
+    .user-card:hover { border-color: var(--primary); background: rgba(99, 102, 241, 0.05); }
+    .user-card-info { min-width: 0; }
+    .user-card-name { font-weight: 600; }
+    .user-card-handle { color: var(--muted); font-size: 0.9rem; }
+    .user-card-actions { display: flex; gap: 8px; flex-shrink: 0; }
 
-    .search-results {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
+    /* Small Buttons */
+    .btn-sm { padding: 8px 16px; border: none; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.3s; white-space: nowrap; }
+    .btn-sm.primary { background: var(--primary); color: white; }
+    .btn-sm.primary:hover { background: #7c3aed; transform: translateY(-1px); }
+    .btn-sm.success { background: var(--success); color: white; }
+    .btn-sm.success:hover { background: #059669; }
+    .btn-sm.danger { background: var(--danger); color: white; }
+    .btn-sm.danger:hover { background: #dc2626; }
+    .btn-sm.chat-open { background: var(--bg-tertiary); color: var(--primary); border: 1px solid var(--primary); }
+    .btn-sm.chat-open:hover { background: rgba(99, 102, 241, 0.1); }
 
-    .user-card {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 16px;
-      background: var(--bg-tertiary);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      transition: all 0.3s ease;
-    }
+    /* Back Button */
+    .btn-back { background: transparent; color: var(--primary); border: 1px solid var(--primary); padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.3s; font-size: 0.9rem; }
+    .btn-back:hover { background: rgba(99, 102, 241, 0.1); }
 
-    .user-card:hover {
-      border-color: var(--primary);
-      background: rgba(99, 102, 241, 0.05);
-    }
+    /* Conversation */
+    .convo-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 8px; background: var(--bg-primary); }
+    .convo-input-bar { display: flex; gap: 12px; padding: 16px 20px; background: var(--bg-secondary); border-top: 1px solid var(--border); }
+    .msg-bubble { max-width: 70%; padding: 10px 14px; border-radius: 12px; font-size: 0.95rem; line-height: 1.4; word-wrap: break-word; }
+    .msg-bubble.sent { background: var(--primary); color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
+    .msg-bubble.received { background: var(--bg-tertiary); color: var(--text-primary); align-self: flex-start; border-bottom-left-radius: 4px; }
+    .msg-meta { font-size: 0.7rem; color: var(--muted); margin-top: 4px; }
+    .msg-sender { font-size: 0.75rem; color: var(--primary); font-weight: 600; margin-bottom: 2px; }
 
-    .btn-add-friend {
-      padding: 8px 16px;
-      background: var(--primary);
-      color: white;
-      border: none;
-      border-radius: 6px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      white-space: nowrap;
-    }
+    /* Modal */
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
+    .modal.hidden { display: none; }
+    .modal-content { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; width: 100%; max-width: 440px; }
 
-    .btn-add-friend:hover {
-      background: #7c3aed;
-      transform: translateY(-2px);
-    }
+    /* Checkbox items in group modal */
+    .checkbox-item { display: flex; align-items: center; gap: 10px; padding: 10px; background: var(--bg-tertiary); border-radius: 6px; cursor: pointer; }
+    .checkbox-item:hover { background: rgba(99, 102, 241, 0.08); }
+    .checkbox-item input { accent-color: var(--primary); width: 16px; height: 16px; }
 
-    .btn-back {
-      background: transparent;
-      color: var(--primary);
-      border: 1px solid var(--primary);
-      padding: 8px 16px;
-      border-radius: 6px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      font-size: 0.9rem;
-    }
-
-    .btn-back:hover {
-      background: rgba(99, 102, 241, 0.1);
-    }
+    /* Page layout for convo pages */
+    #page-convo, #page-group-convo { display: none; flex-direction: column; height: 100vh; }
 
     @media (max-width: 768px) {
-      .chat-body {
-        padding: 20px;
-      }
-
-      .search-wrapper {
-        flex-direction: column;
-      }
-
-      .btn-primary {
-        width: 100% !important;
-      }
+      .chat-body { padding: 16px; }
+      .search-wrapper { flex-direction: column; }
+      .convo-messages { padding: 12px; }
+      .msg-bubble { max-width: 85%; }
     }
   </style>
 
