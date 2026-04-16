@@ -1,4 +1,12 @@
 // ════════════════════════════════════════════════════════════════════════
+// API BASE URL — uses Render backend when hosted on GitHub Pages
+// ════════════════════════════════════════════════════════════════════════
+
+const API_BASE = window.location.hostname.includes('github.io')
+  ? 'https://nexus-auth-1.onrender.com'
+  : '';
+
+// ════════════════════════════════════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════════════════════════════════════
 
@@ -118,7 +126,7 @@ if (loginForm) {
     if (!valid) return;
 
     try {
-      const res = await fetch('/api/login', {
+      const res = await fetch(API_BASE + '/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
@@ -174,7 +182,7 @@ if (registerForm) {
     regBtn.querySelector('.btn-text').textContent = 'Creating...';
 
     try {
-      const res = await fetch('/api/register', {
+      const res = await fetch(API_BASE + '/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ first_name, last_name, username, email, dob, password, confirm })
@@ -215,7 +223,7 @@ document.getElementById('chat-btn')?.addEventListener('click', () => {
   showPage('page-chat');
   loadChatPage();
   // Mark messages as seen
-  fetch('/api/mark-chat-seen', {
+  fetch(API_BASE + '/api/mark-chat-seen', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_id: currentUser.id })
   }).catch(() => {});
@@ -293,7 +301,7 @@ async function loadStories() {
   bar.appendChild(addBtn);
 
   try {
-    const res = await fetch(`/api/stories/${currentUser.id}`);
+    const res = await fetch(`${API_BASE}/api/stories/${currentUser.id}`);
     const data = await res.json();
     storyData = data.story_users || [];
 
@@ -476,7 +484,7 @@ document.getElementById('story-publish-btn')?.addEventListener('click', async ()
   btn.textContent = 'Publishing...';
 
   try {
-    const res = await fetch('/api/stories', {
+    const res = await fetch(API_BASE + '/api/stories', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -710,7 +718,7 @@ document.getElementById('post-publish-btn')?.addEventListener('click', async () 
   btn.textContent = 'Publishing...';
 
   try {
-    const res = await fetch('/api/posts', {
+    const res = await fetch(API_BASE + '/api/posts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -746,7 +754,7 @@ async function loadFeed() {
   if (!container || !currentUser) return;
 
   try {
-    const res = await fetch(`/api/feed/${currentUser.id}`);
+    const res = await fetch(`${API_BASE}/api/feed/${currentUser.id}`);
     const data = await res.json();
 
     if (!data.posts || data.posts.length === 0) {
@@ -827,7 +835,7 @@ async function toggleLike(btn) {
   const method = isLiked ? 'DELETE' : 'POST';
 
   try {
-    const res = await fetch(`/api/posts/${postId}/like`, {
+    const res = await fetch(`${API_BASE}/api/posts/${postId}/like`, {
       method, headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: currentUser.id })
     });
@@ -846,7 +854,7 @@ async function toggleLike(btn) {
 
 async function loadLikers(postId) {
   try {
-    const res = await fetch(`/api/posts/${postId}/likes`);
+    const res = await fetch(`${API_BASE}/api/posts/${postId}/likes`);
     const data = await res.json();
     const el = document.querySelector(`.feed-likers[data-post-id="${postId}"]`);
     if (!el) return;
@@ -878,7 +886,7 @@ async function toggleComments(btn) {
   commentsDiv.classList.add('open');
 
   try {
-    const res = await fetch(`/api/posts/${postId}/comments`);
+    const res = await fetch(`${API_BASE}/api/posts/${postId}/comments`);
     const data = await res.json();
 
     if (data.comments.length === 0) {
@@ -906,7 +914,7 @@ async function postComment(postId) {
   if (!comment) return;
 
   try {
-    await fetch(`/api/posts/${postId}/comments`, {
+    await fetch(`${API_BASE}/api/posts/${postId}/comments`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: currentUser.id, comment })
     });
@@ -918,7 +926,7 @@ async function postComment(postId) {
     if (commentsDiv) {
       commentsDiv.classList.add('open');
       // Reload
-      const res = await fetch(`/api/posts/${postId}/comments`);
+      const res = await fetch(`${API_BASE}/api/posts/${postId}/comments`);
       const data = await res.json();
       commentsDiv.innerHTML = '';
       data.comments.forEach(c => {
@@ -939,7 +947,7 @@ async function postComment(postId) {
 async function loadUnreadCount() {
   if (!currentUser) return;
   try {
-    const res = await fetch(`/api/unread-count/${currentUser.id}`);
+    const res = await fetch(`${API_BASE}/api/unread-count/${currentUser.id}`);
     const data = await res.json();
     const badge = document.getElementById('chat-unread-badge');
     if (badge) {
@@ -969,7 +977,7 @@ async function loadChatPage() {
 async function loadFriendsList() {
   const container = document.getElementById('friends-list');
   try {
-    const res = await fetch(`/api/friends/${currentUser.id}`);
+    const res = await fetch(`${API_BASE}/api/friends/${currentUser.id}`);
     const data = await res.json();
 
     if (data.friends.length === 0) {
@@ -1007,7 +1015,7 @@ async function loadNotifications() {
   const badge = document.getElementById('req-badge');
 
   try {
-    const res = await fetch(`/api/notifications/${currentUser.id}`);
+    const res = await fetch(`${API_BASE}/api/notifications/${currentUser.id}`);
     const data = await res.json();
 
     if (data.notifications.length === 0) {
@@ -1044,7 +1052,7 @@ async function loadNotifications() {
 
 async function acceptRequest(requestId) {
   try {
-    const res = await fetch('/api/accept-friend-request', {
+    const res = await fetch(API_BASE + '/api/accept-friend-request', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ request_id: requestId })
     });
@@ -1054,7 +1062,7 @@ async function acceptRequest(requestId) {
 
 async function declineRequest(requestId) {
   try {
-    const res = await fetch('/api/decline-friend-request', {
+    const res = await fetch(API_BASE + '/api/decline-friend-request', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ request_id: requestId })
     });
@@ -1083,7 +1091,7 @@ async function searchUsers() {
   const container = document.getElementById('search-results');
 
   try {
-    const res = await fetch(`/api/search-users/${encodeURIComponent(query)}?exclude=${currentUser.id}`);
+    const res = await fetch(`${API_BASE}/api/search-users/${encodeURIComponent(query)}?exclude=${currentUser.id}`);
     const data = await res.json();
 
     if (data.users.length === 0) { container.innerHTML = '<p class="empty-msg">No users found</p>'; return; }
@@ -1102,7 +1110,7 @@ async function searchUsers() {
       card.querySelector('.btn-sm').addEventListener('click', async (e) => {
         const btn = e.target;
         try {
-          const res = await fetch('/api/send-friend-request', {
+          const res = await fetch(API_BASE + '/api/send-friend-request', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sender_id: currentUser.id, recipient_id: user.id })
           });
@@ -1123,7 +1131,7 @@ async function searchUsers() {
 function notifyTyping(recipientId) {
   if (Date.now() - lastTypingSent < 2000) return;
   lastTypingSent = Date.now();
-  fetch('/api/typing', {
+  fetch(API_BASE + '/api/typing', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sender_id: currentUser.id, recipient_id: recipientId })
   }).catch(() => {});
@@ -1131,7 +1139,7 @@ function notifyTyping(recipientId) {
 
 async function checkTypingStatus(otherId, indicatorId) {
   try {
-    const res = await fetch(`/api/typing-status/${currentUser.id}/${otherId}`);
+    const res = await fetch(`${API_BASE}/api/typing-status/${currentUser.id}/${otherId}`);
     const data = await res.json();
     const el = document.getElementById(indicatorId);
     if (el) {
@@ -1244,7 +1252,7 @@ async function loadMessages() {
   const wasAtBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 30;
 
   try {
-    const res = await fetch(`/api/messages/${currentUser.id}/${currentConvoUser.id}`);
+    const res = await fetch(`${API_BASE}/api/messages/${currentUser.id}/${currentConvoUser.id}`);
     const data = await res.json();
 
     container.innerHTML = '';
@@ -1276,7 +1284,7 @@ async function sendDM(content, type) {
     input.value = '';
   }
 
-  await fetch('/api/send-message', {
+  await fetch(API_BASE + '/api/send-message', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sender_id: currentUser.id, recipient_id: currentConvoUser.id, message, type: msgType })
   });
@@ -1291,7 +1299,7 @@ async function sendDM(content, type) {
 async function loadGroupsList() {
   const container = document.getElementById('groups-list');
   try {
-    const res = await fetch(`/api/groups/${currentUser.id}`);
+    const res = await fetch(`${API_BASE}/api/groups/${currentUser.id}`);
     const data = await res.json();
 
     if (data.groups.length === 0) {
@@ -1323,7 +1331,7 @@ document.getElementById('create-group-btn')?.addEventListener('click', async () 
   document.getElementById('group-name-input').value = '';
 
   try {
-    const res = await fetch(`/api/friends/${currentUser.id}`);
+    const res = await fetch(`${API_BASE}/api/friends/${currentUser.id}`);
     const data = await res.json();
 
     if (data.friends.length === 0) {
@@ -1354,7 +1362,7 @@ document.getElementById('modal-create-group-ok')?.addEventListener('click', asyn
   if (memberIds.length === 0) { alert('Select at least one friend'); return; }
 
   try {
-    const res = await fetch('/api/create-group', {
+    const res = await fetch(API_BASE + '/api/create-group', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, creator_id: currentUser.id, member_ids: memberIds })
     });
@@ -1392,7 +1400,7 @@ async function loadGroupMessages() {
   const wasAtBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 30;
 
   try {
-    const res = await fetch(`/api/group-messages/${currentGroupId}`);
+    const res = await fetch(`${API_BASE}/api/group-messages/${currentGroupId}`);
     const data = await res.json();
 
     container.innerHTML = '';
@@ -1428,7 +1436,7 @@ async function sendGroupMsg(content, type) {
     input.value = '';
   }
 
-  await fetch('/api/send-group-message', {
+  await fetch(API_BASE + '/api/send-group-message', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ group_id: currentGroupId, sender_id: currentUser.id, message, type: msgType })
   });
