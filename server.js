@@ -200,36 +200,30 @@ initTables();
 // ════════════════════════════════════════════════════════════════════════
 
 app.get('/api/test', async (req, res) => {
-  const info = {
-    server: 'running',
-    connection_mode: process.env.DATABASE_URL ? 'DATABASE_URL' : 'individual vars',
-    db_host: process.env.DATABASE_URL ? '(using URL)' : (process.env.DB_HOST || 'NOT SET'),
-    db_port: process.env.DATABASE_URL ? '(using URL)' : (process.env.DB_PORT || '5432 (default)'),
-    db_name: process.env.DATABASE_URL ? '(using URL)' : (process.env.DB_NAME || 'NOT SET'),
-    db_user: process.env.DATABASE_URL ? '(using URL)' : (process.env.DB_USER || 'NOT SET'),
-    db_password_set: !!(process.env.DATABASE_URL || process.env.DB_PASSWORD)
-  };
-
   try {
-    const timeResult = await pool.query('SELECT NOW() as time');
-    info.database = 'connected';
-    info.server_time = timeResult.rows[0].time;
-
-    const tableCheck = await pool.query(`
-      SELECT table_name FROM information_schema.tables
-      WHERE table_schema = 'public'
-    `);
-    info.tables = tableCheck.rows.map(r => r.table_name);
-
     const userCount = await pool.query('SELECT COUNT(*) as count FROM users');
-    info.user_count = parseInt(userCount.rows[0].count);
+    res.json({ server: 'running', database: 'connected', user_count: parseInt(userCount.rows[0].count) });
   } catch (err) {
-    info.database = 'FAILED';
-    info.db_error = err.message;
+    res.json({ server: 'running', database: 'FAILED', db_error: err.message });
   }
-
-  res.json(info);
 });
+
+// Helper: get friend IDs for a user
+async function getFriendIds(userId) {
+  const result = await pool.query(
+    `SELECT CASE WHEN user_id_1 = $1 THEN user_id_2 ELSE user_id_1 END AS friend_id
+     FROM friends WHERE user_id_1 = $1 OR user_id_2 = $1`, [userId]
+  );
+  return result.rows.map(r => r.friend_id);
+}
+
+// Cleanup stale typing entries every 10 seconds
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, ts] of typingStatus) {
+    if (now - ts > 5000) typingStatus.delete(key);
+  }
+}, 10000);
 
 // ════════════════════════════════════════════════════════════════════════
 // ROUTES — REGISTER
@@ -287,60 +281,25 @@ app.post('/api/register', async (req, res) => {
 
 // ════════════════════════════════════════════════════════════════════════
 // ROUTES — LOGIN
-// Supports both bcrypt-hashed and plain-text passwords (legacy users)
 // ════════════════════════════════════════════════════════════════════════
 
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
 
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password are required' });
-    }
-
-    const result = await pool.query(
-      'SELECT * FROM users WHERE username = $1', [username]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Invalid username or password' });
-    }
+    const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+    if (result.rows.length === 0) return res.status(401).json({ error: 'Invalid username or password' });
 
     const user = result.rows[0];
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) return res.status(401).json({ error: 'Invalid username or password' });
 
-    // Check if password is bcrypt-hashed (starts with $2a$ or $2b$)
-    let passwordMatch = false;
-    if (user.password.startsWith('$2a$') || user.password.startsWith('$2b$')) {
-      passwordMatch = await bcrypt.compare(password, user.password);
-    } else {
-      // Legacy plain-text password — compare directly
-      passwordMatch = (password === user.password);
-
-      // Upgrade to bcrypt hash for next login
-      if (passwordMatch) {
-        const hashed = await bcrypt.hash(password, 12);
-        await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hashed, user.id]);
-      }
-    }
-
-    if (!passwordMatch) {
-      return res.status(401).json({ error: 'Invalid username or password' });
-    }
-
-    // Return user data (never return password)
     res.json({
       success: true,
-      user: {
-        id:         user.id,
-        first_name: user.first_name,
-        last_name:  user.last_name,
-        username:   user.username,
-        email:      user.email,
-        dob:        user.dob,
-        joined_at:  user.joined_at
-      }
+      user: { id: user.id, first_name: user.first_name, last_name: user.last_name,
+              username: user.username, email: user.email, dob: user.dob, joined_at: user.joined_at }
     });
-
   } catch (err) {
     console.error('Login error:', err.message);
     res.status(500).json({ error: 'Server error, please try again' });
@@ -801,16 +760,9 @@ app.get('/api/stories/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
 
-    // Delete expired stories
     await pool.query('DELETE FROM stories WHERE expires_at < NOW()');
 
-    // Get friend IDs
-    const friendsResult = await pool.query(
-      `SELECT CASE WHEN user_id_1 = $1 THEN user_id_2 ELSE user_id_1 END AS friend_id
-       FROM friends WHERE user_id_1 = $1 OR user_id_2 = $1`,
-      [user_id]
-    );
-    const friendIds = friendsResult.rows.map(r => r.friend_id);
+    const friendIds = await getFriendIds(user_id);
     const allIds = [parseInt(user_id), ...friendIds];
 
     // Get stories from self + friends
@@ -914,12 +866,7 @@ app.get('/api/feed/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
 
-    const friendsResult = await pool.query(
-      `SELECT CASE WHEN user_id_1 = $1 THEN user_id_2 ELSE user_id_1 END AS friend_id
-       FROM friends WHERE user_id_1 = $1 OR user_id_2 = $1`,
-      [user_id]
-    );
-    const friendIds = friendsResult.rows.map(r => r.friend_id);
+    const friendIds = await getFriendIds(user_id);
     const allIds = [parseInt(user_id), ...friendIds];
 
     const result = await pool.query(

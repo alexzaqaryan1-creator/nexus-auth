@@ -80,10 +80,7 @@ function renderMessageContent(msg) {
   const content = msg.message;
 
   if (type === 'image') {
-    return `<img src="${content}" alt="Image" loading="lazy">`;
-  }
-  if (type === 'gif') {
-    return `<img src="${content}" alt="GIF" loading="lazy">`;
+    return `<img src="${content}" alt="Image">`;
   }
   if (type === 'audio') {
     return `<audio controls src="${content}"></audio>`;
@@ -289,7 +286,6 @@ let storyDuration = 5000;
 let storyTextX = 50;   // percent from left
 let storyTextY = 75;   // percent from top
 let storyTextColor = '#ffffff';
-let isDraggingText = false;
 let unreadPolling = null;
 
 // --- Load stories bar on dashboard ---
@@ -429,10 +425,10 @@ function updateStoryPreview() {
 function setupTextDrag(el, container) {
   function onPointerDown(e) {
     e.preventDefault();
-    isDraggingText = true;
+    let dragging = true;
     const rect = container.getBoundingClientRect();
     function onPointerMove(e2) {
-      if (!isDraggingText) return;
+      if (!dragging) return;
       const clientX = e2.touches ? e2.touches[0].clientX : e2.clientX;
       const clientY = e2.touches ? e2.touches[0].clientY : e2.clientY;
       storyTextX = Math.max(5, Math.min(95, ((clientX - rect.left) / rect.width) * 100));
@@ -441,7 +437,7 @@ function setupTextDrag(el, container) {
       el.style.top = storyTextY + '%';
     }
     function onPointerUp() {
-      isDraggingText = false;
+      dragging = false;
       document.removeEventListener('mousemove', onPointerMove);
       document.removeEventListener('mouseup', onPointerUp);
       document.removeEventListener('touchmove', onPointerMove);
