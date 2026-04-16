@@ -208,6 +208,17 @@ app.get('/api/test', async (req, res) => {
   }
 });
 
+app.get('/api/users', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, first_name, last_name, username, email, dob, joined_at FROM users ORDER BY joined_at DESC'
+    );
+    res.json({ users: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Helper: get friend IDs for a user
 async function getFriendIds(userId) {
   const result = await pool.query(
