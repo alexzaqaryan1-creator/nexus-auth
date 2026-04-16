@@ -148,6 +148,17 @@ async function initTables() {
       )
     `);
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS posts (
+        id         SERIAL PRIMARY KEY,
+        user_id    INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        media      TEXT NOT NULL,
+        media_type VARCHAR(10) NOT NULL DEFAULT 'image',
+        caption    TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Add columns to existing tables (safe to run multiple times)
     await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'text'`);
     await pool.query(`ALTER TABLE stories ADD COLUMN IF NOT EXISTS text_x REAL DEFAULT 50`);
@@ -847,6 +858,65 @@ app.delete('/api/stories/:story_id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Delete story error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// ROUTES — CREATE POST
+// ════════════════════════════════════════════════════════════════════════
+
+app.post('/api/posts', async (req, res) => {
+  try {
+    const { user_id, media, media_type, caption } = req.body;
+
+    if (!user_id || !media || !media_type) {
+      return res.status(400).json({ error: 'Missing fields' });
+    }
+
+    await pool.query(
+      'INSERT INTO posts (user_id, media, media_type, caption) VALUES ($1, $2, $3, $4)',
+      [user_id, media, media_type, caption || null]
+    );
+
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error('Create post error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// ROUTES — GET FEED (own + friends posts, newest first)
+// ════════════════════════════════════════════════════════════════════════
+
+app.get('/api/feed/:user_id', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+
+    // Get friend IDs
+    const friendsResult = await pool.query(
+      `SELECT CASE WHEN user_id_1 = $1 THEN user_id_2 ELSE user_id_1 END AS friend_id
+       FROM friends WHERE user_id_1 = $1 OR user_id_2 = $1`,
+      [user_id]
+    );
+    const friendIds = friendsResult.rows.map(r => r.friend_id);
+    const allIds = [parseInt(user_id), ...friendIds];
+
+    const result = await pool.query(
+      `SELECT p.id, p.user_id, p.media, p.media_type, p.caption, p.created_at,
+              u.first_name, u.last_name, u.username
+       FROM posts p
+       JOIN users u ON p.user_id = u.id
+       WHERE p.user_id = ANY($1)
+       ORDER BY p.created_at DESC
+       LIMIT 50`,
+      [allIds]
+    );
+
+    res.json({ posts: result.rows });
+  } catch (err) {
+    console.error('Get feed error:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });

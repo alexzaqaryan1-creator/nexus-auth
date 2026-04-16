@@ -261,6 +261,7 @@ function loadDashboard(user) {
   showPage('page-dashboard');
   startClock();
   loadStories();
+  loadFeed();
   loadUnreadCount();
   if (unreadPolling) clearInterval(unreadPolling);
   unreadPolling = setInterval(loadUnreadCount, 10000);
@@ -639,6 +640,153 @@ function timeAgo(dateStr) {
   if (mins < 60) return mins + 'm ago';
   const hrs = Math.floor(mins / 60);
   return hrs + 'h ago';
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// POSTS — Creator
+// ════════════════════════════════════════════════════════════════════════
+
+let postFileData = null;
+let postFileType = null;
+
+document.getElementById('add-post-btn')?.addEventListener('click', () => {
+  showPage('page-create-post');
+  resetPostCreator();
+});
+
+document.getElementById('back-from-post-create')?.addEventListener('click', () => {
+  showPage('page-dashboard');
+  loadStories();
+  loadFeed();
+});
+
+function resetPostCreator() {
+  postFileData = null;
+  postFileType = null;
+  document.getElementById('post-preview').innerHTML = '<p class="empty-msg">Select an image or video</p>';
+  document.getElementById('post-caption').value = '';
+  document.getElementById('post-publish-btn').disabled = true;
+}
+
+document.getElementById('post-pick-file')?.addEventListener('click', () => {
+  document.getElementById('post-file-input').click();
+});
+
+document.getElementById('post-file-input')?.addEventListener('change', async function () {
+  const file = this.files[0];
+  if (!file) return;
+
+  const isVideo = file.type.startsWith('video/');
+  const maxSize = isVideo ? 15 : 5;
+
+  if (file.size > maxSize * 1024 * 1024) {
+    alert(`File too large. Max ${maxSize}MB.`);
+    this.value = '';
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    postFileData = reader.result;
+    postFileType = isVideo ? 'video' : 'image';
+    const preview = document.getElementById('post-preview');
+    if (isVideo) {
+      preview.innerHTML = `<video src="${postFileData}" controls playsinline></video>`;
+    } else {
+      preview.innerHTML = `<img src="${postFileData}" alt="Post preview">`;
+    }
+    document.getElementById('post-publish-btn').disabled = false;
+  };
+  reader.readAsDataURL(file);
+  this.value = '';
+});
+
+document.getElementById('post-publish-btn')?.addEventListener('click', async () => {
+  if (!postFileData) return;
+
+  const caption = document.getElementById('post-caption').value.trim();
+  const btn = document.getElementById('post-publish-btn');
+  btn.disabled = true;
+  btn.textContent = 'Publishing...';
+
+  try {
+    const res = await fetch('/api/posts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: currentUser.id,
+        media: postFileData,
+        media_type: postFileType,
+        caption: caption || null
+      })
+    });
+
+    if (res.ok) {
+      showPage('page-dashboard');
+      loadStories();
+      loadFeed();
+    } else {
+      const data = await res.json();
+      alert(data.error || 'Failed to publish post');
+    }
+  } catch (err) {
+    alert('Error publishing post');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Publish Post';
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// POSTS — Feed
+// ════════════════════════════════════════════════════════════════════════
+
+async function loadFeed() {
+  const container = document.getElementById('feed-container');
+  if (!container || !currentUser) return;
+
+  try {
+    const res = await fetch(`/api/feed/${currentUser.id}`);
+    const data = await res.json();
+
+    if (!data.posts || data.posts.length === 0) {
+      container.innerHTML = '<p class="empty-msg">No posts yet. Add a post or follow friends to see their posts!</p>';
+      return;
+    }
+
+    container.innerHTML = '';
+    data.posts.forEach(post => {
+      const initials = (post.first_name[0] || '') + (post.last_name[0] || '');
+      const card = document.createElement('div');
+      card.className = 'feed-card';
+
+      let mediaHtml = '';
+      if (post.media_type === 'video') {
+        mediaHtml = `<video src="${post.media}" class="feed-media" controls playsinline></video>`;
+      } else {
+        mediaHtml = `<img src="${post.media}" class="feed-media" alt="Post" loading="lazy">`;
+      }
+
+      const captionHtml = post.caption
+        ? `<div class="feed-caption"><strong>@${post.username}</strong>${post.caption.replace(/</g, '&lt;')}</div>`
+        : '';
+
+      card.innerHTML = `
+        <div class="feed-header">
+          <div class="feed-avatar">${initials.toUpperCase()}</div>
+          <div>
+            <div class="feed-username">@${post.username}</div>
+            <div class="feed-time">${timeAgo(post.created_at)}</div>
+          </div>
+        </div>
+        ${mediaHtml}
+        ${captionHtml}
+      `;
+      container.appendChild(card);
+    });
+  } catch (err) {
+    container.innerHTML = '<p class="empty-msg">Error loading feed</p>';
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════
