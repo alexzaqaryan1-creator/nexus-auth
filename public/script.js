@@ -107,6 +107,7 @@ if (loginForm) {
       } else {
         showAlert('login-success', 'Login successful! Redirecting...', 'success');
         currentUser = data.user;
+        localStorage.setItem('nexus_user', JSON.stringify(data.user));
         setTimeout(() => loadDashboard(data.user), 800);
       }
     } catch (err) {
@@ -691,6 +692,7 @@ document.getElementById('logout-btn')?.addEventListener('click', () => {
   currentUser = null;
   currentConvoUser = null;
   currentGroupId = null;
+  localStorage.removeItem('nexus_user');
   showPage('page-login');
   loginForm?.reset();
   clearFieldErrors();
@@ -701,5 +703,15 @@ document.getElementById('logout-btn')?.addEventListener('click', () => {
 // ════════════════════════════════════════════════════════════════════════
 
 document.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('nexus_user');
+  if (saved) {
+    try {
+      currentUser = JSON.parse(saved);
+      loadDashboard(currentUser);
+      return;
+    } catch (e) {
+      localStorage.removeItem('nexus_user');
+    }
+  }
   showPage('page-login');
 });
