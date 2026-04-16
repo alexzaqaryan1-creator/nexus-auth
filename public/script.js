@@ -6,7 +6,6 @@ let currentUser = null;
 let currentConvoUser = null;
 let currentGroupId = null;
 let messagePolling = null;
-let typingPolling = null;
 let lastTypingSent = 0;
 let audioRecorder = null;
 let audioChunks = [];
@@ -17,7 +16,6 @@ let audioChunks = [];
 
 function showPage(pageId) {
   if (messagePolling) { clearInterval(messagePolling); messagePolling = null; }
-  if (typingPolling) { clearInterval(typingPolling); typingPolling = null; }
   stopRecording();
   document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
   const page = document.getElementById(pageId);
@@ -462,14 +460,6 @@ function fileToBase64(file, maxSizeMB) {
   });
 }
 
-async function sendMediaMessage(sendFn, content, type) {
-  try {
-    await sendFn(content, type);
-  } catch (err) {
-    alert(err.message || 'Error sending media');
-  }
-}
-
 // ════════════════════════════════════════════════════════════════════════
 // AUDIO RECORDING
 // ════════════════════════════════════════════════════════════════════════
@@ -810,7 +800,6 @@ function startClock() {
 document.getElementById('logout-btn')?.addEventListener('click', () => {
   if (clockInterval) clearInterval(clockInterval);
   if (messagePolling) clearInterval(messagePolling);
-  if (typingPolling) clearInterval(typingPolling);
   stopRecording();
   currentUser = null;
   currentConvoUser = null;
