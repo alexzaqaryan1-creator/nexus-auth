@@ -19,6 +19,7 @@ function showPage(pageId) {
   if (messagePolling) { clearInterval(messagePolling); messagePolling = null; }
   if (typingPolling) { clearInterval(typingPolling); typingPolling = null; }
   stopRecording();
+  document.querySelectorAll('.gif-picker').forEach(p => p.classList.add('hidden'));
   document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
   const page = document.getElementById(pageId);
   if (page) {
@@ -446,6 +447,78 @@ async function checkTypingStatus(otherId, indicatorId) {
 }
 
 // ════════════════════════════════════════════════════════════════════════
+// GIF PICKER (GIPHY-powered)
+// ════════════════════════════════════════════════════════════════════════
+
+let gifSearchTimeout = null;
+
+function setupGifPicker(btnId, closeId, pickerId, searchId, gridId, onSelect) {
+  wireButton(btnId, () => {
+    const picker = document.getElementById(pickerId);
+    const isHidden = picker.classList.contains('hidden');
+    picker.classList.toggle('hidden');
+    if (isHidden) {
+      document.getElementById(searchId).value = '';
+      loadGifs(gridId, '', onSelect);
+      document.getElementById(searchId).focus();
+    }
+  });
+
+  wireButton(closeId, () => {
+    document.getElementById(pickerId).classList.add('hidden');
+  });
+
+  // Search with debounce
+  const searchEl = document.getElementById(searchId);
+  if (searchEl) {
+    const newSearch = searchEl.cloneNode(true);
+    searchEl.parentNode.replaceChild(newSearch, searchEl);
+    newSearch.addEventListener('input', () => {
+      clearTimeout(gifSearchTimeout);
+      gifSearchTimeout = setTimeout(() => {
+        loadGifs(gridId, newSearch.value.trim(), onSelect);
+      }, 400);
+    });
+  }
+}
+
+async function loadGifs(gridId, query, onSelect) {
+  const grid = document.getElementById(gridId);
+  grid.innerHTML = '<div class="gif-loading">Loading GIFs...</div>';
+
+  try {
+    const url = query ? `/api/gifs?q=${encodeURIComponent(query)}` : '/api/gifs';
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (data.error) {
+      grid.innerHTML = `<div class="gif-loading">${data.error}</div>`;
+      return;
+    }
+
+    if (!data.gifs || data.gifs.length === 0) {
+      grid.innerHTML = '<div class="gif-loading">No GIFs found</div>';
+      return;
+    }
+
+    grid.innerHTML = '';
+    data.gifs.forEach(gif => {
+      const img = document.createElement('img');
+      img.src = gif.preview;
+      img.alt = 'GIF';
+      img.loading = 'lazy';
+      img.addEventListener('click', () => {
+        onSelect(gif.full);
+        grid.closest('.gif-picker').classList.add('hidden');
+      });
+      grid.appendChild(img);
+    });
+  } catch (err) {
+    grid.innerHTML = '<div class="gif-loading">Failed to load GIFs</div>';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // MEDIA HELPERS
 // ════════════════════════════════════════════════════════════════════════
 
@@ -544,9 +617,9 @@ function openConversation(friend) {
   wireButton('convo-img-btn', () => document.getElementById('convo-img-input').click());
   wireFileInput('convo-img-input', 5, (b64) => sendDM(b64, 'image'));
 
-  // Wire up GIF (opens system file picker for .gif files)
-  wireButton('convo-gif-btn', () => document.getElementById('convo-gif-input').click());
-  wireFileInput('convo-gif-input', 5, (b64) => sendDM(b64, 'gif'));
+  // Wire up GIF picker
+  setupGifPicker('convo-gif-btn', 'convo-gif-close', 'convo-gif-picker', 'convo-gif-search', 'convo-gif-grid',
+    (url) => sendDM(url, 'gif'));
 
   // Wire up audio
   setupAudioRecording('convo-audio-btn', async (b64) => {
@@ -698,9 +771,9 @@ function openGroupConvo(group) {
   wireButton('group-img-btn', () => document.getElementById('group-img-input').click());
   wireFileInput('group-img-input', 5, (b64) => sendGroupMsg(b64, 'image'));
 
-  // GIF (opens system file picker for .gif files)
-  wireButton('group-gif-btn', () => document.getElementById('group-gif-input').click());
-  wireFileInput('group-gif-input', 5, (b64) => sendGroupMsg(b64, 'gif'));
+  // GIF picker
+  setupGifPicker('group-gif-btn', 'group-gif-close', 'group-gif-picker', 'group-gif-search', 'group-gif-grid',
+    (url) => sendGroupMsg(url, 'gif'));
 
   // Audio
   setupAudioRecording('group-audio-btn', async (b64) => { await sendGroupMsg(b64, 'audio'); });
