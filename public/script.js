@@ -253,6 +253,312 @@ function loadDashboard(user) {
 
   showPage('page-dashboard');
   startClock();
+  loadStories();
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// STORIES
+// ════════════════════════════════════════════════════════════════════════
+
+let storyData = [];       // all story_users from API
+let storyUserIdx = 0;     // current user index in viewer
+let storyItemIdx = 0;     // current story index within user
+let storyTimer = null;
+let storyAnimFrame = null;
+let storyStartTime = 0;
+let storyDuration = 5000;
+
+// --- Load stories bar on dashboard ---
+async function loadStories() {
+  const bar = document.getElementById('stories-bar');
+  // Keep the "add story" button, remove the rest
+  const addBtn = bar.querySelector('.add-story');
+  bar.innerHTML = '';
+  bar.appendChild(addBtn);
+
+  try {
+    const res = await fetch(`/api/stories/${currentUser.id}`);
+    const data = await res.json();
+    storyData = data.story_users || [];
+
+    storyData.forEach((su, idx) => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'story-avatar-wrapper';
+      const initials = (su.first_name[0] || '') + (su.last_name[0] || '');
+      wrapper.innerHTML = `
+        <div class="story-avatar has-story">${initials.toUpperCase()}</div>
+        <span class="story-name">${su.user_id === currentUser.id ? 'Your Story' : su.first_name}</span>
+      `;
+      wrapper.addEventListener('click', () => openStoryViewer(idx));
+      bar.appendChild(wrapper);
+    });
+  } catch (err) { /* ignore */ }
+}
+
+// --- Add Story button ---
+document.getElementById('add-story-btn')?.addEventListener('click', () => {
+  showPage('page-create-story');
+  resetStoryCreator();
+});
+
+document.getElementById('back-from-story-create')?.addEventListener('click', () => {
+  showPage('page-dashboard');
+  loadStories();
+});
+
+// --- Story Creator ---
+let storyFileData = null;
+let storyFileType = null;
+
+function resetStoryCreator() {
+  storyFileData = null;
+  storyFileType = null;
+  document.getElementById('story-preview').innerHTML = '<p class="empty-msg">Select an image or video</p>';
+  document.getElementById('story-text-overlay').value = '';
+  document.getElementById('story-mentions').value = '';
+  document.getElementById('story-publish-btn').disabled = true;
+}
+
+document.getElementById('story-pick-file')?.addEventListener('click', () => {
+  document.getElementById('story-file-input').click();
+});
+
+document.getElementById('story-file-input')?.addEventListener('change', async function () {
+  const file = this.files[0];
+  if (!file) return;
+
+  const isVideo = file.type.startsWith('video/');
+  const maxSize = isVideo ? 15 : 5; // MB
+
+  if (file.size > maxSize * 1024 * 1024) {
+    alert(`File too large. Max ${maxSize}MB.`);
+    this.value = '';
+    return;
+  }
+
+  // Validate video duration
+  if (isVideo) {
+    const valid = await validateVideoDuration(file, 15);
+    if (!valid) {
+      alert('Video must be 15 seconds or shorter.');
+      this.value = '';
+      return;
+    }
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    storyFileData = reader.result;
+    storyFileType = isVideo ? 'video' : 'image';
+    updateStoryPreview();
+    document.getElementById('story-publish-btn').disabled = false;
+  };
+  reader.readAsDataURL(file);
+  this.value = '';
+});
+
+function validateVideoDuration(file, maxSeconds) {
+  return new Promise(resolve => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      URL.revokeObjectURL(video.src);
+      resolve(video.duration <= maxSeconds);
+    };
+    video.onerror = () => resolve(false);
+    video.src = URL.createObjectURL(file);
+  });
+}
+
+function updateStoryPreview() {
+  const preview = document.getElementById('story-preview');
+  const text = document.getElementById('story-text-overlay').value.trim();
+
+  if (!storyFileData) {
+    preview.innerHTML = '<p class="empty-msg">Select an image or video</p>';
+    return;
+  }
+
+  let mediaHtml = '';
+  if (storyFileType === 'video') {
+    mediaHtml = `<video src="${storyFileData}" muted autoplay loop playsinline></video>`;
+  } else {
+    mediaHtml = `<img src="${storyFileData}" alt="Story preview">`;
+  }
+  const textHtml = text ? `<div class="preview-text">${text.replace(/</g,'&lt;')}</div>` : '';
+  preview.innerHTML = mediaHtml + textHtml;
+}
+
+document.getElementById('story-text-overlay')?.addEventListener('input', updateStoryPreview);
+
+document.getElementById('story-publish-btn')?.addEventListener('click', async () => {
+  if (!storyFileData) return;
+
+  const textOverlay = document.getElementById('story-text-overlay').value.trim();
+  const mentionsRaw = document.getElementById('story-mentions').value.trim();
+  const mentions = mentionsRaw ? mentionsRaw.split(',').map(m => m.trim().replace(/^@/, '')) : [];
+
+  const btn = document.getElementById('story-publish-btn');
+  btn.disabled = true;
+  btn.textContent = 'Publishing...';
+
+  try {
+    const res = await fetch('/api/stories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: currentUser.id,
+        media: storyFileData,
+        media_type: storyFileType,
+        text_overlay: textOverlay || null,
+        mentions: mentions.length > 0 ? mentions : null
+      })
+    });
+
+    if (res.ok) {
+      showPage('page-dashboard');
+      loadStories();
+    } else {
+      const data = await res.json();
+      alert(data.error || 'Failed to publish story');
+    }
+  } catch (err) {
+    alert('Error publishing story');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Publish Story';
+  }
+});
+
+// --- Story Viewer ---
+function openStoryViewer(userIdx) {
+  storyUserIdx = userIdx;
+  storyItemIdx = 0;
+  document.getElementById('story-viewer').classList.remove('hidden');
+  showCurrentStory();
+}
+
+function closeStoryViewer() {
+  document.getElementById('story-viewer').classList.add('hidden');
+  clearStoryTimer();
+  const video = document.querySelector('#sv-media video');
+  if (video) video.pause();
+}
+
+document.getElementById('sv-close')?.addEventListener('click', closeStoryViewer);
+
+document.getElementById('sv-prev')?.addEventListener('click', () => {
+  clearStoryTimer();
+  if (storyItemIdx > 0) {
+    storyItemIdx--;
+  } else if (storyUserIdx > 0) {
+    storyUserIdx--;
+    storyItemIdx = storyData[storyUserIdx].stories.length - 1;
+  }
+  showCurrentStory();
+});
+
+document.getElementById('sv-next')?.addEventListener('click', advanceStory);
+
+function advanceStory() {
+  clearStoryTimer();
+  const su = storyData[storyUserIdx];
+  if (storyItemIdx < su.stories.length - 1) {
+    storyItemIdx++;
+    showCurrentStory();
+  } else if (storyUserIdx < storyData.length - 1) {
+    storyUserIdx++;
+    storyItemIdx = 0;
+    showCurrentStory();
+  } else {
+    closeStoryViewer();
+  }
+}
+
+function clearStoryTimer() {
+  if (storyTimer) { clearTimeout(storyTimer); storyTimer = null; }
+  if (storyAnimFrame) { cancelAnimationFrame(storyAnimFrame); storyAnimFrame = null; }
+}
+
+function showCurrentStory() {
+  const su = storyData[storyUserIdx];
+  if (!su) { closeStoryViewer(); return; }
+  const story = su.stories[storyItemIdx];
+  if (!story) { closeStoryViewer(); return; }
+
+  // Header
+  const initials = (su.first_name[0] || '') + (su.last_name[0] || '');
+  document.getElementById('sv-avatar').textContent = initials.toUpperCase();
+  document.getElementById('sv-name').textContent = `${su.first_name} ${su.last_name}`;
+  document.getElementById('sv-time').textContent = timeAgo(story.created_at);
+
+  // Progress bar segments
+  const progressBar = document.getElementById('story-progress');
+  progressBar.innerHTML = '';
+  su.stories.forEach((_, i) => {
+    const seg = document.createElement('div');
+    seg.className = 'story-progress-seg' + (i < storyItemIdx ? ' done' : '') + (i === storyItemIdx ? ' active' : '');
+    seg.innerHTML = '<div class="fill"></div>';
+    progressBar.appendChild(seg);
+  });
+
+  // Media
+  const mediaEl = document.getElementById('sv-media');
+  if (story.media_type === 'video') {
+    mediaEl.innerHTML = `<video src="${story.media}" autoplay playsinline></video>`;
+    const video = mediaEl.querySelector('video');
+    video.onloadedmetadata = () => {
+      storyDuration = Math.min(video.duration * 1000, 15000);
+      startStoryProgress();
+    };
+    video.onended = advanceStory;
+  } else {
+    mediaEl.innerHTML = `<img src="${story.media}" alt="Story">`;
+    storyDuration = 5000;
+    startStoryProgress();
+  }
+
+  // Text overlay
+  const textEl = document.getElementById('sv-text');
+  textEl.textContent = story.text_overlay || '';
+
+  // Mentions
+  const mentionsEl = document.getElementById('sv-mentions');
+  if (story.mentions && story.mentions.length > 0) {
+    mentionsEl.textContent = story.mentions.map(m => '@' + m).join('  ');
+  } else {
+    mentionsEl.textContent = '';
+  }
+}
+
+function startStoryProgress() {
+  clearStoryTimer();
+  const activeSeg = document.querySelector('.story-progress-seg.active .fill');
+  if (!activeSeg) return;
+
+  storyStartTime = performance.now();
+  activeSeg.style.width = '0%';
+  activeSeg.style.transition = 'none';
+
+  function animate(now) {
+    const elapsed = now - storyStartTime;
+    const pct = Math.min((elapsed / storyDuration) * 100, 100);
+    activeSeg.style.width = pct + '%';
+    if (pct < 100) {
+      storyAnimFrame = requestAnimationFrame(animate);
+    }
+  }
+  storyAnimFrame = requestAnimationFrame(animate);
+  storyTimer = setTimeout(advanceStory, storyDuration);
+}
+
+function timeAgo(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  return hrs + 'h ago';
 }
 
 // ════════════════════════════════════════════════════════════════════════

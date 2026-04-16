@@ -12,7 +12,7 @@ const app = express();
 // ════════════════════════════════════════════════════════════════════════
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '20mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // In-memory typing status: key = "senderId-recipientId", value = timestamp
@@ -132,6 +132,19 @@ async function initTables() {
         sender_id  INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         message    TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS stories (
+        id          SERIAL PRIMARY KEY,
+        user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        media       TEXT NOT NULL,
+        media_type  VARCHAR(10) NOT NULL DEFAULT 'image',
+        text_overlay TEXT,
+        mentions    TEXT,
+        created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at  TIMESTAMP NOT NULL
       )
     `);
 
@@ -695,6 +708,118 @@ app.get('/api/group-messages/:group_id', async (req, res) => {
     res.json({ messages: result.rows });
   } catch (err) {
     console.error('Get group messages error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// ROUTES — CREATE STORY
+// ════════════════════════════════════════════════════════════════════════
+
+app.post('/api/stories', async (req, res) => {
+  try {
+    const { user_id, media, media_type, text_overlay, mentions } = req.body;
+
+    if (!user_id || !media || !media_type) {
+      return res.status(400).json({ error: 'Missing fields' });
+    }
+
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await pool.query(
+      `INSERT INTO stories (user_id, media, media_type, text_overlay, mentions, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [user_id, media, media_type, text_overlay || null, mentions ? JSON.stringify(mentions) : null, expiresAt]
+    );
+
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error('Create story error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// ROUTES — GET STORIES (own + friends, grouped by user)
+// ════════════════════════════════════════════════════════════════════════
+
+app.get('/api/stories/:user_id', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+
+    // Delete expired stories
+    await pool.query('DELETE FROM stories WHERE expires_at < NOW()');
+
+    // Get friend IDs
+    const friendsResult = await pool.query(
+      `SELECT CASE WHEN user_id_1 = $1 THEN user_id_2 ELSE user_id_1 END AS friend_id
+       FROM friends WHERE user_id_1 = $1 OR user_id_2 = $1`,
+      [user_id]
+    );
+    const friendIds = friendsResult.rows.map(r => r.friend_id);
+    const allIds = [parseInt(user_id), ...friendIds];
+
+    // Get stories from self + friends
+    const result = await pool.query(
+      `SELECT s.id, s.user_id, s.media, s.media_type, s.text_overlay, s.mentions,
+              s.created_at, s.expires_at, u.first_name, u.last_name, u.username
+       FROM stories s
+       JOIN users u ON s.user_id = u.id
+       WHERE s.user_id = ANY($1)
+       ORDER BY s.created_at ASC`,
+      [allIds]
+    );
+
+    // Group by user
+    const grouped = {};
+    result.rows.forEach(story => {
+      if (!grouped[story.user_id]) {
+        grouped[story.user_id] = {
+          user_id: story.user_id,
+          first_name: story.first_name,
+          last_name: story.last_name,
+          username: story.username,
+          stories: []
+        };
+      }
+      grouped[story.user_id].stories.push({
+        id: story.id,
+        media: story.media,
+        media_type: story.media_type,
+        text_overlay: story.text_overlay,
+        mentions: story.mentions ? JSON.parse(story.mentions) : [],
+        created_at: story.created_at
+      });
+    });
+
+    // Put current user first
+    const users = Object.values(grouped);
+    users.sort((a, b) => {
+      if (a.user_id === parseInt(user_id)) return -1;
+      if (b.user_id === parseInt(user_id)) return 1;
+      return 0;
+    });
+
+    res.json({ story_users: users });
+  } catch (err) {
+    console.error('Get stories error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// ROUTES — DELETE OWN STORY
+// ════════════════════════════════════════════════════════════════════════
+
+app.delete('/api/stories/:story_id', async (req, res) => {
+  try {
+    const { story_id } = req.params;
+    const { user_id } = req.body;
+
+    await pool.query('DELETE FROM stories WHERE id = $1 AND user_id = $2', [story_id, user_id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete story error:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });
