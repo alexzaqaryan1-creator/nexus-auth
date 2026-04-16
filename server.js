@@ -1,19 +1,17 @@
-const express  = require('express');
-const cors     = require('cors');
-const path     = require('path');
-const { Pool } = require('pg');
-const bcrypt   = require('bcryptjs');
+const express     = require('express');
+const compression = require('compression');
+const cors        = require('cors');
+const path        = require('path');
+const { Pool }    = require('pg');
+const bcrypt      = require('bcryptjs');
 require('dotenv').config();
 
 const app = express();
 
-// ════════════════════════════════════════════════════════════════════════
-// MIDDLEWARE
-// ════════════════════════════════════════════════════════════════════════
-
+app.use(compression());
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1d' }));
 
 // In-memory typing status: key = "senderId-recipientId", value = timestamp
 const typingStatus = new Map();
@@ -187,6 +185,17 @@ async function initTables() {
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_chat TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
     await pool.query(`ALTER TABLE group_messages ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'text'`);
 
+    // Indexes for fast queries
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(sender_id, recipient_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient_id, created_at)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_group_messages_group ON group_messages(group_id, created_at)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_posts_user ON posts(user_id, created_at)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_stories_user ON stories(user_id, expires_at)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_post_likes_post ON post_likes(post_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_post_comments_post ON post_comments(post_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_friends_user1 ON friends(user_id_1)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_friends_user2 ON friends(user_id_2)');
+
     console.log('All tables ready');
   } catch (err) {
     console.error('Table init error:', err.message);
@@ -218,6 +227,42 @@ app.get('/api/users', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+// ════════════════════════════════════════════════════════════════════════
+// MEDIA ENDPOINTS (serve media separately, not in JSON lists)
+// ════════════════════════════════════════════════════════════════════════
+
+app.get('/api/posts/:id/media', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT media FROM posts WHERE id = $1', [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).send('Not found');
+    sendBase64Media(res, result.rows[0].media);
+  } catch (err) { res.status(500).send('Error'); }
+});
+
+app.get('/api/stories/:id/media', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT media FROM stories WHERE id = $1', [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).send('Not found');
+    sendBase64Media(res, result.rows[0].media);
+  } catch (err) { res.status(500).send('Error'); }
+});
+
+app.get('/api/messages/:id/media', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT message, type FROM messages WHERE id = $1', [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).send('Not found');
+    sendBase64Media(res, result.rows[0].message);
+  } catch (err) { res.status(500).send('Error'); }
+});
+
+function sendBase64Media(res, dataUrl) {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) return res.status(400).send('Invalid media');
+  const buffer = Buffer.from(match[2], 'base64');
+  res.set({ 'Content-Type': match[1], 'Cache-Control': 'public, max-age=86400' });
+  res.send(buffer);
+}
 
 // Helper: get friend IDs for a user
 async function getFriendIds(userId) {
@@ -521,8 +566,9 @@ app.get('/api/messages/:user1/:user2', async (req, res) => {
     const { user1, user2 } = req.params;
 
     const result = await pool.query(
-      `SELECT m.id, m.sender_id, m.recipient_id, m.message, m.created_at,
-              m.type, u.username, u.first_name
+      `SELECT m.id, m.sender_id, m.recipient_id,
+              CASE WHEN m.type = 'text' THEN m.message ELSE NULL END AS message,
+              m.created_at, m.type, u.username, u.first_name
        FROM messages m
        JOIN users u ON m.sender_id = u.id
        WHERE (m.sender_id = $1 AND m.recipient_id = $2)
@@ -701,8 +747,9 @@ app.get('/api/group-messages/:group_id', async (req, res) => {
     const { group_id } = req.params;
 
     const result = await pool.query(
-      `SELECT gm.id, gm.sender_id, gm.message, gm.created_at,
-              gm.type, u.username, u.first_name
+      `SELECT gm.id, gm.sender_id,
+              CASE WHEN gm.type = 'text' THEN gm.message ELSE NULL END AS message,
+              gm.created_at, gm.type, u.username, u.first_name
        FROM group_messages gm
        JOIN users u ON gm.sender_id = u.id
        WHERE gm.group_id = $1
@@ -778,7 +825,7 @@ app.get('/api/stories/:user_id', async (req, res) => {
 
     // Get stories from self + friends
     const result = await pool.query(
-      `SELECT s.id, s.user_id, s.media, s.media_type, s.text_overlay, s.mentions,
+      `SELECT s.id, s.user_id, s.media_type, s.text_overlay, s.mentions,
               s.text_x, s.text_y, s.text_color,
               s.created_at, s.expires_at, u.first_name, u.last_name, u.username
        FROM stories s
@@ -802,7 +849,6 @@ app.get('/api/stories/:user_id', async (req, res) => {
       }
       grouped[story.user_id].stories.push({
         id: story.id,
-        media: story.media,
         media_type: story.media_type,
         text_overlay: story.text_overlay,
         text_x: story.text_x,
@@ -881,10 +927,13 @@ app.get('/api/feed/:user_id', async (req, res) => {
     const allIds = [parseInt(user_id), ...friendIds];
 
     const result = await pool.query(
-      `SELECT p.id, p.user_id, p.media, p.media_type, p.caption, p.created_at,
+      `SELECT p.id, p.user_id, p.media_type, p.caption, p.created_at,
               u.first_name, u.last_name, u.username,
               (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) AS like_count,
-              EXISTS(SELECT 1 FROM post_likes pl WHERE pl.post_id = p.id AND pl.user_id = $2) AS liked_by_me
+              EXISTS(SELECT 1 FROM post_likes pl WHERE pl.post_id = p.id AND pl.user_id = $2) AS liked_by_me,
+              (SELECT string_agg(u2.username, ', ' ORDER BY pl2.created_at DESC)
+               FROM post_likes pl2 JOIN users u2 ON pl2.user_id = u2.id
+               WHERE pl2.post_id = p.id) AS liked_by
        FROM posts p
        JOIN users u ON p.user_id = u.id
        WHERE p.user_id = ANY($1)

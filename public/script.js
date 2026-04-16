@@ -77,17 +77,10 @@ function getGreeting() {
 // Render message content based on type
 function renderMessageContent(msg) {
   const type = msg.type || 'text';
-  const content = msg.message;
-
-  if (type === 'image') {
-    return `<img src="${content}" alt="Image">`;
-  }
-  if (type === 'audio') {
-    return `<audio controls src="${content}"></audio>`;
-  }
-  // Escape HTML for text messages
-  const escaped = content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  return escaped;
+  if (type === 'image') return `<img src="${API_BASE}/api/messages/${msg.id}/media" alt="Image" loading="lazy">`;
+  if (type === 'audio') return `<audio controls src="${API_BASE}/api/messages/${msg.id}/media"></audio>`;
+  const content = msg.message || '';
+  return content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -585,7 +578,7 @@ function showCurrentStory() {
   // Media
   const mediaEl = document.getElementById('sv-media');
   if (story.media_type === 'video') {
-    mediaEl.innerHTML = `<video src="${story.media}" autoplay playsinline></video>`;
+    mediaEl.innerHTML = `<video src="${API_BASE}/api/stories/${story.id}/media" autoplay playsinline></video>`;
     const video = mediaEl.querySelector('video');
     video.onloadedmetadata = () => {
       storyDuration = Math.min(video.duration * 1000, 15000);
@@ -593,7 +586,7 @@ function showCurrentStory() {
     };
     video.onended = advanceStory;
   } else {
-    mediaEl.innerHTML = `<img src="${story.media}" alt="Story">`;
+    mediaEl.innerHTML = `<img src="${API_BASE}/api/stories/${story.id}/media" alt="Story">`;
     storyDuration = 5000;
     startStoryProgress();
   }
@@ -768,9 +761,9 @@ async function loadFeed() {
 
       let mediaHtml = '';
       if (post.media_type === 'video') {
-        mediaHtml = `<video src="${post.media}" class="feed-media" controls playsinline></video>`;
+        mediaHtml = `<video src="${API_BASE}/api/posts/${post.id}/media" class="feed-media" controls playsinline></video>`;
       } else {
-        mediaHtml = `<img src="${post.media}" class="feed-media" alt="Post" loading="lazy">`;
+        mediaHtml = `<img src="${API_BASE}/api/posts/${post.id}/media" class="feed-media" alt="Post" loading="lazy">`;
       }
 
       const captionHtml = post.caption
@@ -790,7 +783,7 @@ async function loadFeed() {
           <button class="feed-like-btn ${liked ? 'liked' : ''}" data-post-id="${post.id}" data-liked="${liked ? '1' : '0'}">${liked ? '\u2764\uFE0F' : '\uD83E\uDD0D'}</button>
           <span class="feed-like-count" data-post-id="${post.id}">${likeCount} ${likeCount === 1 ? 'like' : 'likes'}</span>
         </div>
-        <div class="feed-likers" data-post-id="${post.id}">${likeCount > 0 ? 'Loading...' : ''}</div>
+        <div class="feed-likers" data-post-id="${post.id}">${post.liked_by ? 'Liked by ' + post.liked_by.split(', ').slice(0,3).map(u=>'@'+u).join(', ') + (post.liked_by.split(', ').length > 3 ? ' and others' : '') : ''}</div>
         ${captionHtml}
         <button class="feed-comments-toggle" data-post-id="${post.id}">View comments</button>
         <div class="feed-comments" data-post-id="${post.id}"></div>
@@ -800,9 +793,6 @@ async function loadFeed() {
         </div>
       `;
       container.appendChild(card);
-
-      // Load who liked this post
-      if (likeCount > 0) loadLikers(post.id);
     });
 
     // Attach event listeners
@@ -828,11 +818,11 @@ async function loadFeed() {
 async function toggleLike(btn) {
   const postId = btn.dataset.postId;
   const isLiked = btn.dataset.liked === '1';
-  const method = isLiked ? 'DELETE' : 'POST';
 
   try {
     const res = await fetch(`${API_BASE}/api/posts/${postId}/like`, {
-      method, headers: { 'Content-Type': 'application/json' },
+      method: isLiked ? 'DELETE' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: currentUser.id })
     });
     const data = await res.json();
@@ -843,27 +833,6 @@ async function toggleLike(btn) {
 
     const countEl = document.querySelector(`.feed-like-count[data-post-id="${postId}"]`);
     if (countEl) countEl.textContent = `${data.like_count} ${data.like_count === 1 ? 'like' : 'likes'}`;
-
-    loadLikers(postId);
-  } catch (err) { /* ignore */ }
-}
-
-async function loadLikers(postId) {
-  try {
-    const res = await fetch(`${API_BASE}/api/posts/${postId}/likes`);
-    const data = await res.json();
-    const el = document.querySelector(`.feed-likers[data-post-id="${postId}"]`);
-    if (!el) return;
-
-    if (data.users.length === 0) {
-      el.textContent = '';
-      return;
-    }
-
-    const names = data.users.slice(0, 3).map(u => '@' + u.username);
-    let text = 'Liked by ' + names.join(', ');
-    if (data.users.length > 3) text += ` and ${data.users.length - 3} others`;
-    el.textContent = text;
   } catch (err) { /* ignore */ }
 }
 
