@@ -447,13 +447,24 @@ async function checkTypingStatus(otherId, indicatorId) {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// GIF PICKER (GIPHY-powered)
+// GIF PICKER (GIPHY-powered — calls GIPHY API directly from browser)
 // ════════════════════════════════════════════════════════════════════════
 
 let gifSearchTimeout = null;
+let giphyApiKey = null;
+
+async function getGiphyKey() {
+  if (giphyApiKey) return giphyApiKey;
+  try {
+    const res = await fetch('/api/giphy-key');
+    const data = await res.json();
+    giphyApiKey = data.key;
+    return giphyApiKey;
+  } catch (err) { return null; }
+}
 
 function setupGifPicker(btnId, closeId, pickerId, searchId, gridId, onSelect) {
-  wireButton(btnId, () => {
+  wireButton(btnId, async () => {
     const picker = document.getElementById(pickerId);
     const isHidden = picker.classList.contains('hidden');
     picker.classList.toggle('hidden');
@@ -486,29 +497,33 @@ async function loadGifs(gridId, query, onSelect) {
   const grid = document.getElementById(gridId);
   grid.innerHTML = '<div class="gif-loading">Loading GIFs...</div>';
 
+  const apiKey = await getGiphyKey();
+  if (!apiKey) {
+    grid.innerHTML = '<div class="gif-loading">GIF search not configured. Add GIPHY_API_KEY on Render.</div>';
+    return;
+  }
+
   try {
-    const url = query ? `/api/gifs?q=${encodeURIComponent(query)}` : '/api/gifs';
-    const res = await fetch(url);
+    const endpoint = query
+      ? `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(query)}&limit=30&rating=g&lang=en`
+      : `https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=30&rating=g`;
+
+    const res = await fetch(endpoint);
     const data = await res.json();
 
-    if (data.error) {
-      grid.innerHTML = `<div class="gif-loading">${data.error}</div>`;
-      return;
-    }
-
-    if (!data.gifs || data.gifs.length === 0) {
+    if (!data.data || data.data.length === 0) {
       grid.innerHTML = '<div class="gif-loading">No GIFs found</div>';
       return;
     }
 
     grid.innerHTML = '';
-    data.gifs.forEach(gif => {
+    data.data.forEach(gif => {
       const img = document.createElement('img');
-      img.src = gif.preview;
-      img.alt = 'GIF';
+      img.src = gif.images.fixed_height_small.url;
+      img.alt = gif.title || 'GIF';
       img.loading = 'lazy';
       img.addEventListener('click', () => {
-        onSelect(gif.full);
+        onSelect(gif.images.fixed_height.url);
         grid.closest('.gif-picker').classList.add('hidden');
       });
       grid.appendChild(img);

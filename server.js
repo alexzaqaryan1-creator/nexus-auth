@@ -541,40 +541,11 @@ app.get('/api/typing-status/:my_id/:other_id', (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// ROUTES — GIF SEARCH (GIPHY proxy)
+// ROUTES — GIPHY CONFIG (frontend calls GIPHY directly via CORS)
 // ════════════════════════════════════════════════════════════════════════
 
-app.get('/api/gifs', async (req, res) => {
-  const apiKey = process.env.GIPHY_API_KEY;
-  if (!apiKey) {
-    return res.status(503).json({ error: 'GIF search not configured. Add GIPHY_API_KEY env var.' });
-  }
-
-  const query = req.query.q;
-  let url;
-  if (query) {
-    url = `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(query)}&limit=30&rating=g&lang=en`;
-  } else {
-    url = `https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=30&rating=g`;
-  }
-
-  try {
-    const response = await fetch(url);
-    const data = await response.json();
-
-    const gifs = (data.data || []).map(g => ({
-      id: g.id,
-      preview: g.images.fixed_height_small.url,
-      full: g.images.fixed_height.url,
-      width: parseInt(g.images.fixed_height.width),
-      height: parseInt(g.images.fixed_height.height)
-    }));
-
-    res.json({ gifs });
-  } catch (err) {
-    console.error('GIF search error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch GIFs' });
-  }
+app.get('/api/giphy-key', (req, res) => {
+  res.json({ key: process.env.GIPHY_API_KEY || null });
 });
 
 // ════════════════════════════════════════════════════════════════════════
