@@ -159,6 +159,26 @@ async function initTables() {
       )
     `);
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS post_likes (
+        id      SERIAL PRIMARY KEY,
+        post_id INT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+        user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(post_id, user_id)
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS post_comments (
+        id      SERIAL PRIMARY KEY,
+        post_id INT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+        user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        comment TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Add columns to existing tables (safe to run multiple times)
     await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'text'`);
     await pool.query(`ALTER TABLE stories ADD COLUMN IF NOT EXISTS text_x REAL DEFAULT 50`);
@@ -894,7 +914,6 @@ app.get('/api/feed/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
 
-    // Get friend IDs
     const friendsResult = await pool.query(
       `SELECT CASE WHEN user_id_1 = $1 THEN user_id_2 ELSE user_id_1 END AS friend_id
        FROM friends WHERE user_id_1 = $1 OR user_id_2 = $1`,
@@ -905,18 +924,105 @@ app.get('/api/feed/:user_id', async (req, res) => {
 
     const result = await pool.query(
       `SELECT p.id, p.user_id, p.media, p.media_type, p.caption, p.created_at,
-              u.first_name, u.last_name, u.username
+              u.first_name, u.last_name, u.username,
+              (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) AS like_count,
+              EXISTS(SELECT 1 FROM post_likes pl WHERE pl.post_id = p.id AND pl.user_id = $2) AS liked_by_me
        FROM posts p
        JOIN users u ON p.user_id = u.id
        WHERE p.user_id = ANY($1)
        ORDER BY p.created_at DESC
        LIMIT 50`,
-      [allIds]
+      [allIds, user_id]
     );
 
     res.json({ posts: result.rows });
   } catch (err) {
     console.error('Get feed error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// ROUTES — LIKE / UNLIKE POST
+// ════════════════════════════════════════════════════════════════════════
+
+app.post('/api/posts/:post_id/like', async (req, res) => {
+  try {
+    const { post_id } = req.params;
+    const { user_id } = req.body;
+    await pool.query(
+      'INSERT INTO post_likes (post_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [post_id, user_id]
+    );
+    const countResult = await pool.query('SELECT COUNT(*) as count FROM post_likes WHERE post_id = $1', [post_id]);
+    res.json({ success: true, like_count: parseInt(countResult.rows[0].count) });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/posts/:post_id/like', async (req, res) => {
+  try {
+    const { post_id } = req.params;
+    const { user_id } = req.body;
+    await pool.query('DELETE FROM post_likes WHERE post_id = $1 AND user_id = $2', [post_id, user_id]);
+    const countResult = await pool.query('SELECT COUNT(*) as count FROM post_likes WHERE post_id = $1', [post_id]);
+    res.json({ success: true, like_count: parseInt(countResult.rows[0].count) });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// ROUTES — GET WHO LIKED A POST
+// ════════════════════════════════════════════════════════════════════════
+
+app.get('/api/posts/:post_id/likes', async (req, res) => {
+  try {
+    const { post_id } = req.params;
+    const result = await pool.query(
+      `SELECT u.id, u.username, u.first_name, u.last_name
+       FROM post_likes pl JOIN users u ON pl.user_id = u.id
+       WHERE pl.post_id = $1 ORDER BY pl.created_at DESC`,
+      [post_id]
+    );
+    res.json({ users: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// ROUTES — POST COMMENTS
+// ════════════════════════════════════════════════════════════════════════
+
+app.post('/api/posts/:post_id/comments', async (req, res) => {
+  try {
+    const { post_id } = req.params;
+    const { user_id, comment } = req.body;
+    if (!comment || !comment.trim()) return res.status(400).json({ error: 'Empty comment' });
+
+    await pool.query(
+      'INSERT INTO post_comments (post_id, user_id, comment) VALUES ($1, $2, $3)',
+      [post_id, user_id, comment.trim()]
+    );
+    res.status(201).json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/api/posts/:post_id/comments', async (req, res) => {
+  try {
+    const { post_id } = req.params;
+    const result = await pool.query(
+      `SELECT pc.id, pc.comment, pc.created_at, u.username, u.first_name
+       FROM post_comments pc JOIN users u ON pc.user_id = u.id
+       WHERE pc.post_id = $1 ORDER BY pc.created_at ASC`,
+      [post_id]
+    );
+    res.json({ comments: result.rows });
+  } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
 });

@@ -757,6 +757,8 @@ async function loadFeed() {
     container.innerHTML = '';
     data.posts.forEach(post => {
       const initials = (post.first_name[0] || '') + (post.last_name[0] || '');
+      const liked = post.liked_by_me;
+      const likeCount = parseInt(post.like_count) || 0;
       const card = document.createElement('div');
       card.className = 'feed-card';
 
@@ -780,13 +782,154 @@ async function loadFeed() {
           </div>
         </div>
         ${mediaHtml}
+        <div class="feed-actions">
+          <button class="feed-like-btn ${liked ? 'liked' : ''}" data-post-id="${post.id}" data-liked="${liked ? '1' : '0'}">${liked ? '\u2764\uFE0F' : '\uD83E\uDD0D'}</button>
+          <span class="feed-like-count" data-post-id="${post.id}">${likeCount} ${likeCount === 1 ? 'like' : 'likes'}</span>
+        </div>
+        <div class="feed-likers" data-post-id="${post.id}">${likeCount > 0 ? 'Loading...' : ''}</div>
         ${captionHtml}
+        <button class="feed-comments-toggle" data-post-id="${post.id}">View comments</button>
+        <div class="feed-comments" data-post-id="${post.id}"></div>
+        <div class="feed-comment-form">
+          <input class="feed-comment-input" data-post-id="${post.id}" placeholder="Add a comment...">
+          <button class="feed-comment-send" data-post-id="${post.id}">Post</button>
+        </div>
       `;
       container.appendChild(card);
+
+      // Load who liked this post
+      if (likeCount > 0) loadLikers(post.id);
+    });
+
+    // Attach event listeners
+    container.querySelectorAll('.feed-like-btn').forEach(btn => {
+      btn.addEventListener('click', () => toggleLike(btn));
+    });
+    container.querySelectorAll('.feed-comments-toggle').forEach(btn => {
+      btn.addEventListener('click', () => toggleComments(btn));
+    });
+    container.querySelectorAll('.feed-comment-send').forEach(btn => {
+      btn.addEventListener('click', () => postComment(btn.dataset.postId));
+    });
+    container.querySelectorAll('.feed-comment-input').forEach(input => {
+      input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') postComment(input.dataset.postId);
+      });
     });
   } catch (err) {
     container.innerHTML = '<p class="empty-msg">Error loading feed</p>';
   }
+}
+
+async function toggleLike(btn) {
+  const postId = btn.dataset.postId;
+  const isLiked = btn.dataset.liked === '1';
+  const method = isLiked ? 'DELETE' : 'POST';
+
+  try {
+    const res = await fetch(`/api/posts/${postId}/like`, {
+      method, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: currentUser.id })
+    });
+    const data = await res.json();
+
+    btn.dataset.liked = isLiked ? '0' : '1';
+    btn.textContent = isLiked ? '\uD83E\uDD0D' : '\u2764\uFE0F';
+    btn.classList.toggle('liked');
+
+    const countEl = document.querySelector(`.feed-like-count[data-post-id="${postId}"]`);
+    if (countEl) countEl.textContent = `${data.like_count} ${data.like_count === 1 ? 'like' : 'likes'}`;
+
+    loadLikers(postId);
+  } catch (err) { /* ignore */ }
+}
+
+async function loadLikers(postId) {
+  try {
+    const res = await fetch(`/api/posts/${postId}/likes`);
+    const data = await res.json();
+    const el = document.querySelector(`.feed-likers[data-post-id="${postId}"]`);
+    if (!el) return;
+
+    if (data.users.length === 0) {
+      el.textContent = '';
+      return;
+    }
+
+    const names = data.users.slice(0, 3).map(u => '@' + u.username);
+    let text = 'Liked by ' + names.join(', ');
+    if (data.users.length > 3) text += ` and ${data.users.length - 3} others`;
+    el.textContent = text;
+  } catch (err) { /* ignore */ }
+}
+
+async function toggleComments(btn) {
+  const postId = btn.dataset.postId;
+  const commentsDiv = document.querySelector(`.feed-comments[data-post-id="${postId}"]`);
+  if (!commentsDiv) return;
+
+  if (commentsDiv.classList.contains('open')) {
+    commentsDiv.classList.remove('open');
+    btn.textContent = 'View comments';
+    return;
+  }
+
+  commentsDiv.innerHTML = '<p style="color:var(--muted);font-size:0.85rem;">Loading...</p>';
+  commentsDiv.classList.add('open');
+
+  try {
+    const res = await fetch(`/api/posts/${postId}/comments`);
+    const data = await res.json();
+
+    if (data.comments.length === 0) {
+      commentsDiv.innerHTML = '<p style="color:var(--muted);font-size:0.85rem;">No comments yet.</p>';
+      btn.textContent = 'Hide comments';
+      return;
+    }
+
+    commentsDiv.innerHTML = '';
+    data.comments.forEach(c => {
+      const div = document.createElement('div');
+      div.className = 'feed-comment';
+      div.innerHTML = `<strong>@${c.username}</strong>${c.comment.replace(/</g,'&lt;')}<span>${timeAgo(c.created_at)}</span>`;
+      commentsDiv.appendChild(div);
+    });
+    btn.textContent = `Hide comments (${data.comments.length})`;
+  } catch (err) {
+    commentsDiv.innerHTML = '<p style="color:var(--muted);font-size:0.85rem;">Error loading comments.</p>';
+  }
+}
+
+async function postComment(postId) {
+  const input = document.querySelector(`.feed-comment-input[data-post-id="${postId}"]`);
+  const comment = input.value.trim();
+  if (!comment) return;
+
+  try {
+    await fetch(`/api/posts/${postId}/comments`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: currentUser.id, comment })
+    });
+    input.value = '';
+
+    // Refresh comments if open
+    const commentsDiv = document.querySelector(`.feed-comments[data-post-id="${postId}"]`);
+    const toggleBtn = document.querySelector(`.feed-comments-toggle[data-post-id="${postId}"]`);
+    if (commentsDiv) {
+      commentsDiv.classList.add('open');
+      // Reload
+      const res = await fetch(`/api/posts/${postId}/comments`);
+      const data = await res.json();
+      commentsDiv.innerHTML = '';
+      data.comments.forEach(c => {
+        const div = document.createElement('div');
+        div.className = 'feed-comment';
+        div.innerHTML = `<strong>@${c.username}</strong>${c.comment.replace(/</g,'&lt;')}<span>${timeAgo(c.created_at)}</span>`;
+        commentsDiv.appendChild(div);
+      });
+      if (toggleBtn) toggleBtn.textContent = `Hide comments (${data.comments.length})`;
+    }
+  } catch (err) { /* ignore */ }
 }
 
 // ════════════════════════════════════════════════════════════════════════
