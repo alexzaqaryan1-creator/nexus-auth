@@ -331,8 +331,9 @@
         </div>
       </div>
 
-      <div style="margin-top: 24px;">
-        <button id="chat-btn" class="btn-primary" style="max-width: 300px;">Open Chat</button>
+      <div style="margin-top: 24px; position: relative; max-width: 300px;">
+        <button id="chat-btn" class="btn-primary" style="max-width: 300px; width: 100%;">Open Chat</button>
+        <span id="chat-unread-badge" class="unread-badge hidden">0</span>
       </div>
     </div>
   </div>
@@ -356,6 +357,22 @@
         <div class="field-group" style="margin-top:16px;">
           <label for="story-text-overlay">Text Overlay</label>
           <input type="text" id="story-text-overlay" placeholder="Add text to your story...">
+        </div>
+        <div class="field-group">
+          <label>Text Color</label>
+          <div class="color-picker-row">
+            <input type="color" id="story-text-color" value="#ffffff" class="color-input">
+            <div class="color-presets">
+              <span class="color-dot" data-color="#ffffff" style="background:#ffffff;"></span>
+              <span class="color-dot" data-color="#000000" style="background:#000000;"></span>
+              <span class="color-dot" data-color="#ef4444" style="background:#ef4444;"></span>
+              <span class="color-dot" data-color="#f59e0b" style="background:#f59e0b;"></span>
+              <span class="color-dot" data-color="#10b981" style="background:#10b981;"></span>
+              <span class="color-dot" data-color="#6366f1" style="background:#6366f1;"></span>
+              <span class="color-dot" data-color="#ec4899" style="background:#ec4899;"></span>
+            </div>
+          </div>
+          <p style="font-size:0.7rem; color:var(--muted); margin-top:6px;">Drag text on the preview to reposition it</p>
         </div>
         <div class="field-group">
           <label for="story-mentions">Tag Friends (@username)</label>
@@ -614,11 +631,23 @@
     .story-avatar.seen { border-color: var(--muted); opacity: 0.6; }
     .story-name { font-size: 0.7rem; color: var(--muted); max-width: 68px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+    /* Unread badge */
+    .unread-badge { position: absolute; top: -8px; right: -8px; background: var(--danger); color: white; font-size: 0.7rem; font-weight: 700; min-width: 20px; height: 20px; border-radius: 10px; display: flex; align-items: center; justify-content: center; padding: 0 5px; }
+    .unread-badge.hidden { display: none; }
+
     /* ══════ CREATE STORY PAGE ══════ */
     .story-create-body { flex: 1; overflow-y: auto; padding: 24px 20px; display: flex; flex-direction: column; align-items: center; gap: 20px; }
     .story-preview { width: 100%; max-width: 360px; aspect-ratio: 9/16; background: var(--bg-tertiary); border-radius: var(--radius); overflow: hidden; display: flex; align-items: center; justify-content: center; position: relative; }
     .story-preview img, .story-preview video { width: 100%; height: 100%; object-fit: cover; }
-    .story-preview .preview-text { position: absolute; bottom: 60px; left: 0; right: 0; text-align: center; padding: 8px 16px; font-size: 1.1rem; font-weight: 600; color: white; text-shadow: 0 2px 8px rgba(0,0,0,0.7); pointer-events: none; word-wrap: break-word; }
+    .story-preview .preview-text { position: absolute; text-align: center; padding: 8px 16px; font-size: 1.1rem; font-weight: 600; text-shadow: 0 2px 8px rgba(0,0,0,0.7); cursor: grab; word-wrap: break-word; user-select: none; transform: translate(-50%, -50%); max-width: 90%; }
+    .story-preview .preview-text:active { cursor: grabbing; }
+
+    /* Color picker */
+    .color-picker-row { display: flex; align-items: center; gap: 12px; }
+    .color-input { width: 40px; height: 36px; border: none; border-radius: 6px; cursor: pointer; background: none; padding: 0; }
+    .color-presets { display: flex; gap: 8px; }
+    .color-dot { width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid var(--border); transition: transform 0.15s, border-color 0.15s; }
+    .color-dot:hover { transform: scale(1.2); border-color: var(--primary); }
     .story-create-controls { width: 100%; max-width: 360px; }
     #page-create-story { display: none; flex-direction: column; height: 100vh; }
 

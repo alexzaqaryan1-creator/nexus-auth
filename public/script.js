@@ -214,6 +214,13 @@ document.getElementById('go-login-from-reg')?.addEventListener('click', () => {
 document.getElementById('chat-btn')?.addEventListener('click', () => {
   showPage('page-chat');
   loadChatPage();
+  // Mark messages as seen
+  fetch('/api/mark-chat-seen', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: currentUser.id })
+  }).catch(() => {});
+  const badge = document.getElementById('chat-unread-badge');
+  if (badge) { badge.classList.add('hidden'); badge.textContent = '0'; }
 });
 
 document.getElementById('back-from-chat')?.addEventListener('click', () => showPage('page-dashboard'));
@@ -254,6 +261,9 @@ function loadDashboard(user) {
   showPage('page-dashboard');
   startClock();
   loadStories();
+  loadUnreadCount();
+  if (unreadPolling) clearInterval(unreadPolling);
+  unreadPolling = setInterval(loadUnreadCount, 10000);
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -267,6 +277,11 @@ let storyTimer = null;
 let storyAnimFrame = null;
 let storyStartTime = 0;
 let storyDuration = 5000;
+let storyTextX = 50;   // percent from left
+let storyTextY = 75;   // percent from top
+let storyTextColor = '#ffffff';
+let isDraggingText = false;
+let unreadPolling = null;
 
 // --- Load stories bar on dashboard ---
 async function loadStories() {
@@ -313,8 +328,12 @@ let storyFileType = null;
 function resetStoryCreator() {
   storyFileData = null;
   storyFileType = null;
+  storyTextX = 50;
+  storyTextY = 75;
+  storyTextColor = '#ffffff';
   document.getElementById('story-preview').innerHTML = '<p class="empty-msg">Select an image or video</p>';
   document.getElementById('story-text-overlay').value = '';
+  document.getElementById('story-text-color').value = '#ffffff';
   document.getElementById('story-mentions').value = '';
   document.getElementById('story-publish-btn').disabled = true;
 }
@@ -385,9 +404,62 @@ function updateStoryPreview() {
   } else {
     mediaHtml = `<img src="${storyFileData}" alt="Story preview">`;
   }
-  const textHtml = text ? `<div class="preview-text">${text.replace(/</g,'&lt;')}</div>` : '';
+
+  let textHtml = '';
+  if (text) {
+    const escaped = text.replace(/</g, '&lt;');
+    textHtml = `<div class="preview-text" id="draggable-text" style="left:${storyTextX}%;top:${storyTextY}%;color:${storyTextColor};">${escaped}</div>`;
+  }
   preview.innerHTML = mediaHtml + textHtml;
+
+  // Attach drag listeners to the text element
+  const dragEl = document.getElementById('draggable-text');
+  if (dragEl) setupTextDrag(dragEl, preview);
 }
+
+function setupTextDrag(el, container) {
+  function onPointerDown(e) {
+    e.preventDefault();
+    isDraggingText = true;
+    const rect = container.getBoundingClientRect();
+    function onPointerMove(e2) {
+      if (!isDraggingText) return;
+      const clientX = e2.touches ? e2.touches[0].clientX : e2.clientX;
+      const clientY = e2.touches ? e2.touches[0].clientY : e2.clientY;
+      storyTextX = Math.max(5, Math.min(95, ((clientX - rect.left) / rect.width) * 100));
+      storyTextY = Math.max(5, Math.min(95, ((clientY - rect.top) / rect.height) * 100));
+      el.style.left = storyTextX + '%';
+      el.style.top = storyTextY + '%';
+    }
+    function onPointerUp() {
+      isDraggingText = false;
+      document.removeEventListener('mousemove', onPointerMove);
+      document.removeEventListener('mouseup', onPointerUp);
+      document.removeEventListener('touchmove', onPointerMove);
+      document.removeEventListener('touchend', onPointerUp);
+    }
+    document.addEventListener('mousemove', onPointerMove);
+    document.addEventListener('mouseup', onPointerUp);
+    document.addEventListener('touchmove', onPointerMove, { passive: false });
+    document.addEventListener('touchend', onPointerUp);
+  }
+  el.addEventListener('mousedown', onPointerDown);
+  el.addEventListener('touchstart', onPointerDown, { passive: false });
+}
+
+// Color picker
+document.getElementById('story-text-color')?.addEventListener('input', (e) => {
+  storyTextColor = e.target.value;
+  updateStoryPreview();
+});
+
+document.querySelectorAll('.color-dot').forEach(dot => {
+  dot.addEventListener('click', () => {
+    storyTextColor = dot.dataset.color;
+    document.getElementById('story-text-color').value = storyTextColor;
+    updateStoryPreview();
+  });
+});
 
 document.getElementById('story-text-overlay')?.addEventListener('input', updateStoryPreview);
 
@@ -411,7 +483,10 @@ document.getElementById('story-publish-btn')?.addEventListener('click', async ()
         media: storyFileData,
         media_type: storyFileType,
         text_overlay: textOverlay || null,
-        mentions: mentions.length > 0 ? mentions : null
+        mentions: mentions.length > 0 ? mentions : null,
+        text_x: storyTextX,
+        text_y: storyTextY,
+        text_color: storyTextColor
       })
     });
 
@@ -518,9 +593,14 @@ function showCurrentStory() {
     startStoryProgress();
   }
 
-  // Text overlay
+  // Text overlay with position and color
   const textEl = document.getElementById('sv-text');
   textEl.textContent = story.text_overlay || '';
+  textEl.style.left = (story.text_x ?? 50) + '%';
+  textEl.style.top = (story.text_y ?? 75) + '%';
+  textEl.style.color = story.text_color || '#ffffff';
+  textEl.style.transform = 'translate(-50%, -50%)';
+  textEl.style.position = 'absolute';
 
   // Mentions
   const mentionsEl = document.getElementById('sv-mentions');
@@ -559,6 +639,27 @@ function timeAgo(dateStr) {
   if (mins < 60) return mins + 'm ago';
   const hrs = Math.floor(mins / 60);
   return hrs + 'h ago';
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// UNREAD MESSAGE BADGE
+// ════════════════════════════════════════════════════════════════════════
+
+async function loadUnreadCount() {
+  if (!currentUser) return;
+  try {
+    const res = await fetch(`/api/unread-count/${currentUser.id}`);
+    const data = await res.json();
+    const badge = document.getElementById('chat-unread-badge');
+    if (badge) {
+      if (data.count > 0) {
+        badge.textContent = data.count > 99 ? '99+' : data.count;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+    }
+  } catch (err) { /* ignore */ }
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1106,6 +1207,7 @@ function startClock() {
 document.getElementById('logout-btn')?.addEventListener('click', () => {
   if (clockInterval) clearInterval(clockInterval);
   if (messagePolling) clearInterval(messagePolling);
+  if (unreadPolling) clearInterval(unreadPolling);
   stopRecording();
   currentUser = null;
   currentConvoUser = null;

@@ -148,8 +148,12 @@ async function initTables() {
       )
     `);
 
-    // Add type column to existing tables (safe to run multiple times)
+    // Add columns to existing tables (safe to run multiple times)
     await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'text'`);
+    await pool.query(`ALTER TABLE stories ADD COLUMN IF NOT EXISTS text_x REAL DEFAULT 50`);
+    await pool.query(`ALTER TABLE stories ADD COLUMN IF NOT EXISTS text_y REAL DEFAULT 75`);
+    await pool.query(`ALTER TABLE stories ADD COLUMN IF NOT EXISTS text_color VARCHAR(20) DEFAULT '#ffffff'`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_chat TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
     await pool.query(`ALTER TABLE group_messages ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'text'`);
 
     console.log('All tables ready');
@@ -718,7 +722,7 @@ app.get('/api/group-messages/:group_id', async (req, res) => {
 
 app.post('/api/stories', async (req, res) => {
   try {
-    const { user_id, media, media_type, text_overlay, mentions } = req.body;
+    const { user_id, media, media_type, text_overlay, mentions, text_x, text_y, text_color } = req.body;
 
     if (!user_id || !media || !media_type) {
       return res.status(400).json({ error: 'Missing fields' });
@@ -727,10 +731,29 @@ app.post('/api/stories', async (req, res) => {
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     await pool.query(
-      `INSERT INTO stories (user_id, media, media_type, text_overlay, mentions, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [user_id, media, media_type, text_overlay || null, mentions ? JSON.stringify(mentions) : null, expiresAt]
+      `INSERT INTO stories (user_id, media, media_type, text_overlay, mentions, text_x, text_y, text_color, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [user_id, media, media_type, text_overlay || null,
+       mentions ? JSON.stringify(mentions) : null,
+       text_x ?? 50, text_y ?? 75, text_color || '#ffffff', expiresAt]
     );
+
+    // Send mention notifications as DMs
+    if (mentions && mentions.length > 0) {
+      const authorResult = await pool.query('SELECT username FROM users WHERE id = $1', [user_id]);
+      const authorName = authorResult.rows[0]?.username || 'Someone';
+
+      for (const username of mentions) {
+        const userResult = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
+        if (userResult.rows.length > 0) {
+          const mentionedId = userResult.rows[0].id;
+          await pool.query(
+            `INSERT INTO messages (sender_id, recipient_id, message, type) VALUES ($1, $2, $3, 'text')`,
+            [user_id, mentionedId, `@${authorName} mentioned you in their story!`]
+          );
+        }
+      }
+    }
 
     res.status(201).json({ success: true });
   } catch (err) {
@@ -762,6 +785,7 @@ app.get('/api/stories/:user_id', async (req, res) => {
     // Get stories from self + friends
     const result = await pool.query(
       `SELECT s.id, s.user_id, s.media, s.media_type, s.text_overlay, s.mentions,
+              s.text_x, s.text_y, s.text_color,
               s.created_at, s.expires_at, u.first_name, u.last_name, u.username
        FROM stories s
        JOIN users u ON s.user_id = u.id
@@ -787,6 +811,9 @@ app.get('/api/stories/:user_id', async (req, res) => {
         media: story.media,
         media_type: story.media_type,
         text_overlay: story.text_overlay,
+        text_x: story.text_x,
+        text_y: story.text_y,
+        text_color: story.text_color,
         mentions: story.mentions ? JSON.parse(story.mentions) : [],
         created_at: story.created_at
       });
@@ -821,6 +848,37 @@ app.delete('/api/stories/:story_id', async (req, res) => {
   } catch (err) {
     console.error('Delete story error:', err.message);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// ROUTES — UNREAD MESSAGE COUNT
+// ════════════════════════════════════════════════════════════════════════
+
+app.get('/api/unread-count/:user_id', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+
+    const result = await pool.query(
+      `SELECT COUNT(*) as count FROM messages
+       WHERE recipient_id = $1
+       AND created_at > (SELECT COALESCE(last_seen_chat, '1970-01-01') FROM users WHERE id = $1)`,
+      [user_id]
+    );
+
+    res.json({ count: parseInt(result.rows[0].count) });
+  } catch (err) {
+    res.json({ count: 0 });
+  }
+});
+
+app.post('/api/mark-chat-seen', async (req, res) => {
+  try {
+    const { user_id } = req.body;
+    await pool.query('UPDATE users SET last_seen_chat = NOW() WHERE id = $1', [user_id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.json({ success: false });
   }
 });
 
