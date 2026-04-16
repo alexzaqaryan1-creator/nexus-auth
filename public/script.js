@@ -6,6 +6,10 @@ let currentUser = null;
 let currentConvoUser = null;
 let currentGroupId = null;
 let messagePolling = null;
+let typingPolling = null;
+let lastTypingSent = 0;
+let audioRecorder = null;
+let audioChunks = [];
 
 // ════════════════════════════════════════════════════════════════════════
 // PAGE NAVIGATION
@@ -13,6 +17,8 @@ let messagePolling = null;
 
 function showPage(pageId) {
   if (messagePolling) { clearInterval(messagePolling); messagePolling = null; }
+  if (typingPolling) { clearInterval(typingPolling); typingPolling = null; }
+  stopRecording();
   document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
   const page = document.getElementById(pageId);
   if (page) {
@@ -60,6 +66,25 @@ function getGreeting() {
   if (h < 12) return 'Good Morning';
   if (h < 18) return 'Good Afternoon';
   return 'Good Evening';
+}
+
+// Render message content based on type
+function renderMessageContent(msg) {
+  const type = msg.type || 'text';
+  const content = msg.message;
+
+  if (type === 'image') {
+    return `<img src="${content}" alt="Image" loading="lazy">`;
+  }
+  if (type === 'gif') {
+    return `<img src="${content}" alt="GIF" loading="lazy">`;
+  }
+  if (type === 'audio') {
+    return `<audio controls src="${content}"></audio>`;
+  }
+  // Escape HTML for text messages
+  const escaped = content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return escaped;
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -193,19 +218,9 @@ document.getElementById('chat-btn')?.addEventListener('click', () => {
   loadChatPage();
 });
 
-document.getElementById('back-from-chat')?.addEventListener('click', () => {
-  showPage('page-dashboard');
-});
-
-document.getElementById('back-from-convo')?.addEventListener('click', () => {
-  showPage('page-chat');
-  loadChatPage();
-});
-
-document.getElementById('back-from-group-convo')?.addEventListener('click', () => {
-  showPage('page-chat');
-  loadChatPage();
-});
+document.getElementById('back-from-chat')?.addEventListener('click', () => showPage('page-dashboard'));
+document.getElementById('back-from-convo')?.addEventListener('click', () => { showPage('page-chat'); loadChatPage(); });
+document.getElementById('back-from-group-convo')?.addEventListener('click', () => { showPage('page-chat'); loadChatPage(); });
 
 // ════════════════════════════════════════════════════════════════════════
 // CHAT TABS
@@ -243,7 +258,7 @@ function loadDashboard(user) {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// CHAT PAGE — Load all data
+// CHAT PAGE
 // ════════════════════════════════════════════════════════════════════════
 
 async function loadChatPage() {
@@ -334,26 +349,20 @@ async function loadNotifications() {
 async function acceptRequest(requestId) {
   try {
     const res = await fetch('/api/accept-friend-request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ request_id: requestId })
     });
-    if (res.ok) {
-      await Promise.all([loadNotifications(), loadFriendsList()]);
-    }
+    if (res.ok) await Promise.all([loadNotifications(), loadFriendsList()]);
   } catch (err) { /* ignore */ }
 }
 
 async function declineRequest(requestId) {
   try {
     const res = await fetch('/api/decline-friend-request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ request_id: requestId })
     });
-    if (res.ok) {
-      await loadNotifications();
-    }
+    if (res.ok) await loadNotifications();
   } catch (err) { /* ignore */ }
 }
 
@@ -364,13 +373,10 @@ async function declineRequest(requestId) {
 function setupSearch() {
   const searchBtn = document.getElementById('search-btn');
   const searchInput = document.getElementById('user-search');
-
-  // Remove old listeners by cloning
   const newBtn = searchBtn.cloneNode(true);
   searchBtn.parentNode.replaceChild(newBtn, searchBtn);
   const newInput = searchInput.cloneNode(true);
   searchInput.parentNode.replaceChild(newInput, searchInput);
-
   newBtn.addEventListener('click', searchUsers);
   newInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') searchUsers(); });
 }
@@ -378,17 +384,13 @@ function setupSearch() {
 async function searchUsers() {
   const query = document.getElementById('user-search').value.trim();
   if (!query) return;
-
   const container = document.getElementById('search-results');
 
   try {
     const res = await fetch(`/api/search-users/${encodeURIComponent(query)}?exclude=${currentUser.id}`);
     const data = await res.json();
 
-    if (data.users.length === 0) {
-      container.innerHTML = '<p class="empty-msg">No users found</p>';
-      return;
-    }
+    if (data.users.length === 0) { container.innerHTML = '<p class="empty-msg">No users found</p>'; return; }
 
     container.innerHTML = '';
     data.users.forEach(user => {
@@ -399,30 +401,123 @@ async function searchUsers() {
           <div class="user-card-name">${user.first_name} ${user.last_name}</div>
           <div class="user-card-handle">@${user.username}</div>
         </div>
-        <div class="user-card-actions">
-          <button class="btn-sm primary">Add Friend</button>
-        </div>
+        <div class="user-card-actions"><button class="btn-sm primary">Add Friend</button></div>
       `;
       card.querySelector('.btn-sm').addEventListener('click', async (e) => {
         const btn = e.target;
         try {
           const res = await fetch('/api/send-friend-request', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sender_id: currentUser.id, recipient_id: user.id })
           });
           const data = await res.json();
           btn.textContent = res.ok ? 'Sent!' : (data.error || 'Error');
           btn.disabled = true;
-        } catch (err) {
-          btn.textContent = 'Error';
-        }
+        } catch (err) { btn.textContent = 'Error'; }
       });
       container.appendChild(card);
     });
+  } catch (err) { container.innerHTML = '<p class="empty-msg">Error searching</p>'; }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// TYPING INDICATOR
+// ════════════════════════════════════════════════════════════════════════
+
+function notifyTyping(recipientId) {
+  if (Date.now() - lastTypingSent < 2000) return;
+  lastTypingSent = Date.now();
+  fetch('/api/typing', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sender_id: currentUser.id, recipient_id: recipientId })
+  }).catch(() => {});
+}
+
+async function checkTypingStatus(otherId, indicatorId) {
+  try {
+    const res = await fetch(`/api/typing-status/${currentUser.id}/${otherId}`);
+    const data = await res.json();
+    const el = document.getElementById(indicatorId);
+    if (el) {
+      if (data.typing) el.classList.remove('hidden');
+      else el.classList.add('hidden');
+    }
+  } catch (err) { /* ignore */ }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// MEDIA HELPERS
+// ════════════════════════════════════════════════════════════════════════
+
+function fileToBase64(file, maxSizeMB) {
+  return new Promise((resolve, reject) => {
+    if (file.size > maxSizeMB * 1024 * 1024) {
+      reject(new Error(`File too large. Max ${maxSizeMB}MB.`));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function sendMediaMessage(sendFn, content, type) {
+  try {
+    await sendFn(content, type);
   } catch (err) {
-    container.innerHTML = '<p class="empty-msg">Error searching</p>';
+    alert(err.message || 'Error sending media');
   }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// AUDIO RECORDING
+// ════════════════════════════════════════════════════════════════════════
+
+function stopRecording() {
+  if (audioRecorder && audioRecorder.state !== 'inactive') {
+    audioRecorder.stop();
+  }
+  audioRecorder = null;
+  audioChunks = [];
+  document.querySelectorAll('.media-btn.recording').forEach(b => b.classList.remove('recording'));
+}
+
+function setupAudioRecording(btnId, onComplete) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+
+  btn.addEventListener('click', async () => {
+    if (audioRecorder && audioRecorder.state === 'recording') {
+      // Stop recording
+      audioRecorder.stop();
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunks = [];
+      audioRecorder = new MediaRecorder(stream);
+
+      audioRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+
+      audioRecorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        btn.classList.remove('recording');
+        const blob = new Blob(audioChunks, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.onload = () => onComplete(reader.result);
+        reader.readAsDataURL(blob);
+        audioRecorder = null;
+        audioChunks = [];
+      };
+
+      audioRecorder.start();
+      btn.classList.add('recording');
+    } catch (err) {
+      alert('Could not access microphone. Please allow microphone access.');
+    }
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -432,22 +527,80 @@ async function searchUsers() {
 function openConversation(friend) {
   currentConvoUser = friend;
   document.getElementById('convo-title').textContent = `${friend.first_name} ${friend.last_name}`;
+  document.getElementById('convo-gif-panel')?.classList.add('hidden');
   showPage('page-convo');
   loadMessages();
 
-  // Poll for new messages every 3 seconds
-  messagePolling = setInterval(loadMessages, 3000);
+  // Poll messages + typing every 2s
+  messagePolling = setInterval(() => {
+    loadMessages();
+    checkTypingStatus(currentConvoUser.id, 'convo-typing');
+  }, 2000);
 
-  // Send button
-  const sendBtn = document.getElementById('convo-send');
-  const newBtn = sendBtn.cloneNode(true);
-  sendBtn.parentNode.replaceChild(newBtn, sendBtn);
-  newBtn.addEventListener('click', sendMessage);
+  // Wire up text send
+  wireButton('convo-send', () => sendDM());
+  wireInput('convo-input', () => sendDM(), () => notifyTyping(friend.id));
 
-  const input = document.getElementById('convo-input');
-  const newInput = input.cloneNode(true);
-  input.parentNode.replaceChild(newInput, input);
-  newInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+  // Wire up image
+  wireButton('convo-img-btn', () => document.getElementById('convo-img-input').click());
+  const imgInput = document.getElementById('convo-img-input');
+  const newImgInput = imgInput.cloneNode(true);
+  imgInput.parentNode.replaceChild(newImgInput, imgInput);
+  newImgInput.addEventListener('change', async () => {
+    const file = newImgInput.files[0];
+    if (!file) return;
+    try {
+      const b64 = await fileToBase64(file, 5);
+      await sendDM(b64, 'image');
+    } catch (err) { alert(err.message); }
+    newImgInput.value = '';
+  });
+
+  // Wire up GIF
+  wireButton('convo-gif-btn', () => {
+    const panel = document.getElementById('convo-gif-panel');
+    panel.classList.toggle('hidden');
+    if (!panel.classList.contains('hidden')) document.getElementById('convo-gif-url').focus();
+  });
+  wireInput('convo-gif-url', async () => {
+    const urlInput = document.getElementById('convo-gif-url');
+    const url = urlInput.value.trim();
+    if (!url) return;
+    await sendDM(url, 'gif');
+    urlInput.value = '';
+    document.getElementById('convo-gif-preview').innerHTML = '';
+    document.getElementById('convo-gif-panel').classList.add('hidden');
+  });
+  // GIF preview on paste/type
+  const gifUrlEl = document.getElementById('convo-gif-url');
+  if (gifUrlEl) {
+    const newGifUrl = gifUrlEl.cloneNode(true);
+    gifUrlEl.parentNode.replaceChild(newGifUrl, gifUrlEl);
+    newGifUrl.addEventListener('input', () => {
+      const url = newGifUrl.value.trim();
+      const preview = document.getElementById('convo-gif-preview');
+      if (url && (url.endsWith('.gif') || url.includes('giphy') || url.includes('tenor'))) {
+        preview.innerHTML = `<img src="${url}" alt="GIF preview" onerror="this.style.display='none'">`;
+      } else {
+        preview.innerHTML = '';
+      }
+    });
+    newGifUrl.addEventListener('keypress', async (e) => {
+      if (e.key === 'Enter') {
+        const url = newGifUrl.value.trim();
+        if (!url) return;
+        await sendDM(url, 'gif');
+        newGifUrl.value = '';
+        document.getElementById('convo-gif-preview').innerHTML = '';
+        document.getElementById('convo-gif-panel').classList.add('hidden');
+      }
+    });
+  }
+
+  // Wire up audio
+  setupAudioRecording('convo-audio-btn', async (b64) => {
+    await sendDM(b64, 'audio');
+  });
 }
 
 async function loadMessages() {
@@ -469,7 +622,7 @@ async function loadMessages() {
       const isMine = msg.sender_id === currentUser.id;
       const bubble = document.createElement('div');
       bubble.className = `msg-bubble ${isMine ? 'sent' : 'received'}`;
-      bubble.innerHTML = `${msg.message}<div class="msg-meta">${formatTime(msg.created_at)}</div>`;
+      bubble.innerHTML = `${renderMessageContent(msg)}<div class="msg-meta">${formatTime(msg.created_at)}</div>`;
       container.appendChild(bubble);
     });
 
@@ -477,21 +630,23 @@ async function loadMessages() {
   } catch (err) { /* ignore */ }
 }
 
-async function sendMessage() {
-  const input = document.getElementById('convo-input');
-  const msg = input.value.trim();
-  if (!msg) return;
+async function sendDM(content, type) {
+  const msgType = type || 'text';
+  let message = content;
 
-  try {
-    await fetch('/api/send-message', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sender_id: currentUser.id, recipient_id: currentConvoUser.id, message: msg })
-    });
+  if (msgType === 'text') {
+    const input = document.getElementById('convo-input');
+    message = input.value.trim();
+    if (!message) return;
     input.value = '';
-    await loadMessages();
-    document.getElementById('convo-messages').scrollTop = document.getElementById('convo-messages').scrollHeight;
-  } catch (err) { /* ignore */ }
+  }
+
+  await fetch('/api/send-message', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sender_id: currentUser.id, recipient_id: currentConvoUser.id, message, type: msgType })
+  });
+  await loadMessages();
+  document.getElementById('convo-messages').scrollTop = document.getElementById('convo-messages').scrollHeight;
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -518,16 +673,12 @@ async function loadGroupsList() {
           <div class="user-card-name">${group.name}</div>
           <div class="user-card-handle">Group Chat</div>
         </div>
-        <div class="user-card-actions">
-          <button class="btn-sm chat-open">Open</button>
-        </div>
+        <div class="user-card-actions"><button class="btn-sm chat-open">Open</button></div>
       `;
       card.querySelector('.chat-open').addEventListener('click', () => openGroupConvo(group));
       container.appendChild(card);
     });
-  } catch (err) {
-    container.innerHTML = '<p class="empty-msg">Error loading groups</p>';
-  }
+  } catch (err) { container.innerHTML = '<p class="empty-msg">Error loading groups</p>'; }
 }
 
 // Create Group Modal
@@ -536,7 +687,6 @@ document.getElementById('create-group-btn')?.addEventListener('click', async () 
   const checkboxContainer = document.getElementById('group-friend-checkboxes');
   document.getElementById('group-name-input').value = '';
 
-  // Load friends as checkboxes
   try {
     const res = await fetch(`/api/friends/${currentUser.id}`);
     const data = await res.json();
@@ -548,17 +698,11 @@ document.getElementById('create-group-btn')?.addEventListener('click', async () 
       data.friends.forEach(friend => {
         const label = document.createElement('label');
         label.className = 'checkbox-item';
-        label.innerHTML = `
-          <input type="checkbox" value="${friend.id}">
-          <span>${friend.first_name} ${friend.last_name} (@${friend.username})</span>
-        `;
+        label.innerHTML = `<input type="checkbox" value="${friend.id}"><span>${friend.first_name} ${friend.last_name} (@${friend.username})</span>`;
         checkboxContainer.appendChild(label);
       });
     }
-  } catch (err) {
-    checkboxContainer.innerHTML = '<p class="empty-msg" style="margin:0;">Error loading friends</p>';
-  }
-
+  } catch (err) { checkboxContainer.innerHTML = '<p class="empty-msg" style="margin:0;">Error loading friends</p>'; }
   modal.classList.remove('hidden');
 });
 
@@ -576,21 +720,12 @@ document.getElementById('modal-create-group-ok')?.addEventListener('click', asyn
 
   try {
     const res = await fetch('/api/create-group', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, creator_id: currentUser.id, member_ids: memberIds })
     });
-
-    if (res.ok) {
-      document.getElementById('modal-create-group').classList.add('hidden');
-      await loadGroupsList();
-    } else {
-      const data = await res.json();
-      alert(data.error || 'Error creating group');
-    }
-  } catch (err) {
-    alert('Error creating group');
-  }
+    if (res.ok) { document.getElementById('modal-create-group').classList.add('hidden'); await loadGroupsList(); }
+    else { const data = await res.json(); alert(data.error || 'Error creating group'); }
+  } catch (err) { alert('Error creating group'); }
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -600,20 +735,61 @@ document.getElementById('modal-create-group-ok')?.addEventListener('click', asyn
 function openGroupConvo(group) {
   currentGroupId = group.id;
   document.getElementById('group-convo-title').textContent = group.name;
+  document.getElementById('group-gif-panel')?.classList.add('hidden');
   showPage('page-group-convo');
   loadGroupMessages();
 
-  messagePolling = setInterval(loadGroupMessages, 3000);
+  messagePolling = setInterval(loadGroupMessages, 2000);
 
-  const sendBtn = document.getElementById('group-convo-send');
-  const newBtn = sendBtn.cloneNode(true);
-  sendBtn.parentNode.replaceChild(newBtn, sendBtn);
-  newBtn.addEventListener('click', sendGroupMessage);
+  wireButton('group-convo-send', () => sendGroupMsg());
+  wireInput('group-convo-input', () => sendGroupMsg());
 
-  const input = document.getElementById('group-convo-input');
-  const newInput = input.cloneNode(true);
-  input.parentNode.replaceChild(newInput, input);
-  newInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendGroupMessage(); });
+  // Image
+  wireButton('group-img-btn', () => document.getElementById('group-img-input').click());
+  const imgInput = document.getElementById('group-img-input');
+  const newImgInput = imgInput.cloneNode(true);
+  imgInput.parentNode.replaceChild(newImgInput, imgInput);
+  newImgInput.addEventListener('change', async () => {
+    const file = newImgInput.files[0];
+    if (!file) return;
+    try {
+      const b64 = await fileToBase64(file, 5);
+      await sendGroupMsg(b64, 'image');
+    } catch (err) { alert(err.message); }
+    newImgInput.value = '';
+  });
+
+  // GIF
+  wireButton('group-gif-btn', () => {
+    const panel = document.getElementById('group-gif-panel');
+    panel.classList.toggle('hidden');
+    if (!panel.classList.contains('hidden')) document.getElementById('group-gif-url').focus();
+  });
+  const gifUrlEl = document.getElementById('group-gif-url');
+  if (gifUrlEl) {
+    const newGifUrl = gifUrlEl.cloneNode(true);
+    gifUrlEl.parentNode.replaceChild(newGifUrl, gifUrlEl);
+    newGifUrl.addEventListener('input', () => {
+      const url = newGifUrl.value.trim();
+      const preview = document.getElementById('group-gif-preview');
+      if (url && (url.endsWith('.gif') || url.includes('giphy') || url.includes('tenor'))) {
+        preview.innerHTML = `<img src="${url}" alt="GIF preview" onerror="this.style.display='none'">`;
+      } else { preview.innerHTML = ''; }
+    });
+    newGifUrl.addEventListener('keypress', async (e) => {
+      if (e.key === 'Enter') {
+        const url = newGifUrl.value.trim();
+        if (!url) return;
+        await sendGroupMsg(url, 'gif');
+        newGifUrl.value = '';
+        document.getElementById('group-gif-preview').innerHTML = '';
+        document.getElementById('group-gif-panel').classList.add('hidden');
+      }
+    });
+  }
+
+  // Audio
+  setupAudioRecording('group-audio-btn', async (b64) => { await sendGroupMsg(b64, 'audio'); });
 }
 
 async function loadGroupMessages() {
@@ -637,7 +813,7 @@ async function loadGroupMessages() {
       bubble.className = `msg-bubble ${isMine ? 'sent' : 'received'}`;
       bubble.innerHTML = `
         ${!isMine ? `<div class="msg-sender">${msg.first_name}</div>` : ''}
-        ${msg.message}
+        ${renderMessageContent(msg)}
         <div class="msg-meta">${formatTime(msg.created_at)}</div>
       `;
       container.appendChild(bubble);
@@ -647,21 +823,44 @@ async function loadGroupMessages() {
   } catch (err) { /* ignore */ }
 }
 
-async function sendGroupMessage() {
-  const input = document.getElementById('group-convo-input');
-  const msg = input.value.trim();
-  if (!msg) return;
+async function sendGroupMsg(content, type) {
+  const msgType = type || 'text';
+  let message = content;
 
-  try {
-    await fetch('/api/send-group-message', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ group_id: currentGroupId, sender_id: currentUser.id, message: msg })
-    });
+  if (msgType === 'text') {
+    const input = document.getElementById('group-convo-input');
+    message = input.value.trim();
+    if (!message) return;
     input.value = '';
-    await loadGroupMessages();
-    document.getElementById('group-convo-messages').scrollTop = document.getElementById('group-convo-messages').scrollHeight;
-  } catch (err) { /* ignore */ }
+  }
+
+  await fetch('/api/send-group-message', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ group_id: currentGroupId, sender_id: currentUser.id, message, type: msgType })
+  });
+  await loadGroupMessages();
+  document.getElementById('group-convo-messages').scrollTop = document.getElementById('group-convo-messages').scrollHeight;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// WIRING HELPERS (clone to remove old listeners)
+// ════════════════════════════════════════════════════════════════════════
+
+function wireButton(id, handler) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const clone = el.cloneNode(true);
+  el.parentNode.replaceChild(clone, el);
+  clone.addEventListener('click', handler);
+}
+
+function wireInput(id, enterHandler, inputHandler) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const clone = el.cloneNode(true);
+  el.parentNode.replaceChild(clone, el);
+  if (enterHandler) clone.addEventListener('keypress', (e) => { if (e.key === 'Enter') enterHandler(); });
+  if (inputHandler) clone.addEventListener('input', inputHandler);
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -689,6 +888,8 @@ function startClock() {
 document.getElementById('logout-btn')?.addEventListener('click', () => {
   if (clockInterval) clearInterval(clockInterval);
   if (messagePolling) clearInterval(messagePolling);
+  if (typingPolling) clearInterval(typingPolling);
+  stopRecording();
   currentUser = null;
   currentConvoUser = null;
   currentGroupId = null;

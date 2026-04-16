@@ -12,8 +12,11 @@ const app = express();
 // ════════════════════════════════════════════════════════════════════════
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// In-memory typing status: key = "senderId-recipientId", value = timestamp
+const typingStatus = new Map();
 
 // ════════════════════════════════════════════════════════════════════════
 // DATABASE CONNECTION (PostgreSQL)
@@ -131,6 +134,10 @@ async function initTables() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Add type column to existing tables (safe to run multiple times)
+    await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'text'`);
+    await pool.query(`ALTER TABLE group_messages ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'text'`);
 
     console.log('All tables ready');
   } catch (err) {
@@ -464,20 +471,20 @@ app.get('/api/friends/:user_id', async (req, res) => {
 
 app.post('/api/send-message', async (req, res) => {
   try {
-    const { sender_id, recipient_id, message } = req.body;
+    const { sender_id, recipient_id, message, type } = req.body;
+    const msgType = type || 'text';
 
     if (!sender_id || !recipient_id || !message) {
       return res.status(400).json({ error: 'Missing fields' });
     }
 
-    if (message.trim().length === 0) {
-      return res.status(400).json({ error: 'Message cannot be empty' });
-    }
-
     await pool.query(
-      'INSERT INTO messages (sender_id, recipient_id, message) VALUES ($1, $2, $3)',
-      [sender_id, recipient_id, message.trim()]
+      'INSERT INTO messages (sender_id, recipient_id, message, type) VALUES ($1, $2, $3, $4)',
+      [sender_id, recipient_id, msgType === 'text' ? message.trim() : message, msgType]
     );
+
+    // Clear typing status after sending
+    typingStatus.delete(`${sender_id}-${recipient_id}`);
 
     res.json({ success: true });
 
@@ -497,7 +504,7 @@ app.get('/api/messages/:user1/:user2', async (req, res) => {
 
     const result = await pool.query(
       `SELECT m.id, m.sender_id, m.recipient_id, m.message, m.created_at,
-              u.username, u.first_name
+              m.type, u.username, u.first_name
        FROM messages m
        JOIN users u ON m.sender_id = u.id
        WHERE (m.sender_id = $1 AND m.recipient_id = $2)
@@ -511,6 +518,26 @@ app.get('/api/messages/:user1/:user2', async (req, res) => {
     console.error('Get messages error:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// ROUTES — TYPING INDICATOR
+// ════════════════════════════════════════════════════════════════════════
+
+app.post('/api/typing', (req, res) => {
+  const { sender_id, recipient_id } = req.body;
+  if (!sender_id || !recipient_id) return res.status(400).json({ error: 'Missing IDs' });
+  typingStatus.set(`${sender_id}-${recipient_id}`, Date.now());
+  res.json({ success: true });
+});
+
+app.get('/api/typing-status/:my_id/:other_id', (req, res) => {
+  const { my_id, other_id } = req.params;
+  const key = `${other_id}-${my_id}`;
+  const ts = typingStatus.get(key);
+  const isTyping = ts && (Date.now() - ts < 3000);
+  if (!isTyping) typingStatus.delete(key);
+  res.json({ typing: !!isTyping });
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -628,15 +655,16 @@ app.get('/api/group-members/:group_id', async (req, res) => {
 
 app.post('/api/send-group-message', async (req, res) => {
   try {
-    const { group_id, sender_id, message } = req.body;
+    const { group_id, sender_id, message, type } = req.body;
+    const msgType = type || 'text';
 
-    if (!group_id || !sender_id || !message || message.trim().length === 0) {
+    if (!group_id || !sender_id || !message) {
       return res.status(400).json({ error: 'Missing fields' });
     }
 
     await pool.query(
-      'INSERT INTO group_messages (group_id, sender_id, message) VALUES ($1, $2, $3)',
-      [group_id, sender_id, message.trim()]
+      'INSERT INTO group_messages (group_id, sender_id, message, type) VALUES ($1, $2, $3, $4)',
+      [group_id, sender_id, msgType === 'text' ? message.trim() : message, msgType]
     );
 
     res.json({ success: true });
@@ -656,7 +684,7 @@ app.get('/api/group-messages/:group_id', async (req, res) => {
 
     const result = await pool.query(
       `SELECT gm.id, gm.sender_id, gm.message, gm.created_at,
-              u.username, u.first_name
+              gm.type, u.username, u.first_name
        FROM group_messages gm
        JOIN users u ON gm.sender_id = u.id
        WHERE gm.group_id = $1

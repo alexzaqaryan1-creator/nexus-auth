@@ -400,9 +400,20 @@
       <div style="width: 80px;"></div>
     </nav>
     <div class="convo-messages" id="convo-messages"></div>
+    <div class="typing-indicator hidden" id="convo-typing"><span class="typing-dots"></span> typing...</div>
     <div class="convo-input-bar">
       <input type="text" id="convo-input" placeholder="Type a message..." class="search-input" style="flex:1;">
+      <input type="file" id="convo-img-input" accept="image/*" style="display:none;">
+      <div class="media-buttons">
+        <button class="media-btn" id="convo-img-btn" title="Send image">IMG</button>
+        <button class="media-btn" id="convo-gif-btn" title="Send GIF">GIF</button>
+        <button class="media-btn" id="convo-audio-btn" title="Record audio">MIC</button>
+      </div>
       <button id="convo-send" class="btn-primary" style="width: auto; padding: 12px 24px; margin: 0;">Send</button>
+    </div>
+    <div class="gif-panel hidden" id="convo-gif-panel">
+      <input type="text" id="convo-gif-url" placeholder="Paste a GIF URL and press Enter" class="search-input">
+      <div id="convo-gif-preview" class="gif-preview"></div>
     </div>
   </div>
 
@@ -416,9 +427,20 @@
       <div style="width: 80px;"></div>
     </nav>
     <div class="convo-messages" id="group-convo-messages"></div>
+    <div class="typing-indicator hidden" id="group-convo-typing"><span class="typing-dots"></span> typing...</div>
     <div class="convo-input-bar">
       <input type="text" id="group-convo-input" placeholder="Type a message..." class="search-input" style="flex:1;">
+      <input type="file" id="group-img-input" accept="image/*" style="display:none;">
+      <div class="media-buttons">
+        <button class="media-btn" id="group-img-btn" title="Send image">IMG</button>
+        <button class="media-btn" id="group-gif-btn" title="Send GIF">GIF</button>
+        <button class="media-btn" id="group-audio-btn" title="Record audio">MIC</button>
+      </div>
       <button id="group-convo-send" class="btn-primary" style="width: auto; padding: 12px 24px; margin: 0;">Send</button>
+    </div>
+    <div class="gif-panel hidden" id="group-gif-panel">
+      <input type="text" id="group-gif-url" placeholder="Paste a GIF URL and press Enter" class="search-input">
+      <div id="group-gif-preview" class="gif-preview"></div>
     </div>
   </div>
 
@@ -513,11 +535,38 @@
     /* Page layout for convo pages */
     #page-convo, #page-group-convo { display: none; flex-direction: column; height: 100vh; }
 
+    /* Media buttons */
+    .media-buttons { display: flex; gap: 6px; align-items: center; }
+    .media-btn { width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-tertiary); color: var(--muted); font-size: 0.7rem; font-weight: 700; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; }
+    .media-btn:hover { border-color: var(--primary); color: var(--primary); background: rgba(99, 102, 241, 0.08); }
+    .media-btn.recording { background: var(--danger); color: white; border-color: var(--danger); animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+    /* Typing indicator */
+    .typing-indicator { padding: 6px 20px; font-size: 0.8rem; color: var(--muted); font-style: italic; background: var(--bg-primary); }
+    .typing-indicator.hidden { display: none; }
+    .typing-dots::after { content: ''; animation: dots 1.4s infinite; }
+    @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+
+    /* GIF panel */
+    .gif-panel { padding: 12px 20px; background: var(--bg-secondary); border-top: 1px solid var(--border); }
+    .gif-panel.hidden { display: none; }
+    .gif-preview { margin-top: 10px; }
+    .gif-preview img { max-width: 200px; max-height: 150px; border-radius: 8px; }
+
+    /* Media in bubbles */
+    .msg-bubble img { max-width: 100%; max-height: 300px; border-radius: 8px; margin: 4px 0; display: block; }
+    .msg-bubble audio { max-width: 100%; margin: 4px 0; }
+    .msg-bubble.sent .msg-meta { color: rgba(255,255,255,0.6); }
+
     @media (max-width: 768px) {
       .chat-body { padding: 16px; }
       .search-wrapper { flex-direction: column; }
       .convo-messages { padding: 12px; }
       .msg-bubble { max-width: 85%; }
+      .media-buttons { gap: 4px; }
+      .media-btn { width: 36px; height: 36px; font-size: 0.65rem; }
+      .convo-input-bar { gap: 8px; padding: 12px; }
     }
   </style>
 
