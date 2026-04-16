@@ -527,7 +527,6 @@ function setupAudioRecording(btnId, onComplete) {
 function openConversation(friend) {
   currentConvoUser = friend;
   document.getElementById('convo-title').textContent = `${friend.first_name} ${friend.last_name}`;
-  document.getElementById('convo-gif-panel')?.classList.add('hidden');
   showPage('page-convo');
   loadMessages();
 
@@ -543,59 +542,11 @@ function openConversation(friend) {
 
   // Wire up image
   wireButton('convo-img-btn', () => document.getElementById('convo-img-input').click());
-  const imgInput = document.getElementById('convo-img-input');
-  const newImgInput = imgInput.cloneNode(true);
-  imgInput.parentNode.replaceChild(newImgInput, imgInput);
-  newImgInput.addEventListener('change', async () => {
-    const file = newImgInput.files[0];
-    if (!file) return;
-    try {
-      const b64 = await fileToBase64(file, 5);
-      await sendDM(b64, 'image');
-    } catch (err) { alert(err.message); }
-    newImgInput.value = '';
-  });
+  wireFileInput('convo-img-input', 5, (b64) => sendDM(b64, 'image'));
 
-  // Wire up GIF
-  wireButton('convo-gif-btn', () => {
-    const panel = document.getElementById('convo-gif-panel');
-    panel.classList.toggle('hidden');
-    if (!panel.classList.contains('hidden')) document.getElementById('convo-gif-url').focus();
-  });
-  wireInput('convo-gif-url', async () => {
-    const urlInput = document.getElementById('convo-gif-url');
-    const url = urlInput.value.trim();
-    if (!url) return;
-    await sendDM(url, 'gif');
-    urlInput.value = '';
-    document.getElementById('convo-gif-preview').innerHTML = '';
-    document.getElementById('convo-gif-panel').classList.add('hidden');
-  });
-  // GIF preview on paste/type
-  const gifUrlEl = document.getElementById('convo-gif-url');
-  if (gifUrlEl) {
-    const newGifUrl = gifUrlEl.cloneNode(true);
-    gifUrlEl.parentNode.replaceChild(newGifUrl, gifUrlEl);
-    newGifUrl.addEventListener('input', () => {
-      const url = newGifUrl.value.trim();
-      const preview = document.getElementById('convo-gif-preview');
-      if (url && (url.endsWith('.gif') || url.includes('giphy') || url.includes('tenor'))) {
-        preview.innerHTML = `<img src="${url}" alt="GIF preview" onerror="this.style.display='none'">`;
-      } else {
-        preview.innerHTML = '';
-      }
-    });
-    newGifUrl.addEventListener('keypress', async (e) => {
-      if (e.key === 'Enter') {
-        const url = newGifUrl.value.trim();
-        if (!url) return;
-        await sendDM(url, 'gif');
-        newGifUrl.value = '';
-        document.getElementById('convo-gif-preview').innerHTML = '';
-        document.getElementById('convo-gif-panel').classList.add('hidden');
-      }
-    });
-  }
+  // Wire up GIF (opens system file picker for .gif files)
+  wireButton('convo-gif-btn', () => document.getElementById('convo-gif-input').click());
+  wireFileInput('convo-gif-input', 5, (b64) => sendDM(b64, 'gif'));
 
   // Wire up audio
   setupAudioRecording('convo-audio-btn', async (b64) => {
@@ -735,7 +686,6 @@ document.getElementById('modal-create-group-ok')?.addEventListener('click', asyn
 function openGroupConvo(group) {
   currentGroupId = group.id;
   document.getElementById('group-convo-title').textContent = group.name;
-  document.getElementById('group-gif-panel')?.classList.add('hidden');
   showPage('page-group-convo');
   loadGroupMessages();
 
@@ -746,47 +696,11 @@ function openGroupConvo(group) {
 
   // Image
   wireButton('group-img-btn', () => document.getElementById('group-img-input').click());
-  const imgInput = document.getElementById('group-img-input');
-  const newImgInput = imgInput.cloneNode(true);
-  imgInput.parentNode.replaceChild(newImgInput, imgInput);
-  newImgInput.addEventListener('change', async () => {
-    const file = newImgInput.files[0];
-    if (!file) return;
-    try {
-      const b64 = await fileToBase64(file, 5);
-      await sendGroupMsg(b64, 'image');
-    } catch (err) { alert(err.message); }
-    newImgInput.value = '';
-  });
+  wireFileInput('group-img-input', 5, (b64) => sendGroupMsg(b64, 'image'));
 
-  // GIF
-  wireButton('group-gif-btn', () => {
-    const panel = document.getElementById('group-gif-panel');
-    panel.classList.toggle('hidden');
-    if (!panel.classList.contains('hidden')) document.getElementById('group-gif-url').focus();
-  });
-  const gifUrlEl = document.getElementById('group-gif-url');
-  if (gifUrlEl) {
-    const newGifUrl = gifUrlEl.cloneNode(true);
-    gifUrlEl.parentNode.replaceChild(newGifUrl, gifUrlEl);
-    newGifUrl.addEventListener('input', () => {
-      const url = newGifUrl.value.trim();
-      const preview = document.getElementById('group-gif-preview');
-      if (url && (url.endsWith('.gif') || url.includes('giphy') || url.includes('tenor'))) {
-        preview.innerHTML = `<img src="${url}" alt="GIF preview" onerror="this.style.display='none'">`;
-      } else { preview.innerHTML = ''; }
-    });
-    newGifUrl.addEventListener('keypress', async (e) => {
-      if (e.key === 'Enter') {
-        const url = newGifUrl.value.trim();
-        if (!url) return;
-        await sendGroupMsg(url, 'gif');
-        newGifUrl.value = '';
-        document.getElementById('group-gif-preview').innerHTML = '';
-        document.getElementById('group-gif-panel').classList.add('hidden');
-      }
-    });
-  }
+  // GIF (opens system file picker for .gif files)
+  wireButton('group-gif-btn', () => document.getElementById('group-gif-input').click());
+  wireFileInput('group-gif-input', 5, (b64) => sendGroupMsg(b64, 'gif'));
 
   // Audio
   setupAudioRecording('group-audio-btn', async (b64) => { await sendGroupMsg(b64, 'audio'); });
@@ -861,6 +775,22 @@ function wireInput(id, enterHandler, inputHandler) {
   el.parentNode.replaceChild(clone, el);
   if (enterHandler) clone.addEventListener('keypress', (e) => { if (e.key === 'Enter') enterHandler(); });
   if (inputHandler) clone.addEventListener('input', inputHandler);
+}
+
+function wireFileInput(id, maxSizeMB, onBase64) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const clone = el.cloneNode(true);
+  el.parentNode.replaceChild(clone, el);
+  clone.addEventListener('change', async () => {
+    const file = clone.files[0];
+    if (!file) return;
+    try {
+      const b64 = await fileToBase64(file, maxSizeMB);
+      await onBase64(b64);
+    } catch (err) { alert(err.message); }
+    clone.value = '';
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════════

@@ -404,16 +404,13 @@
     <div class="convo-input-bar">
       <input type="text" id="convo-input" placeholder="Type a message..." class="search-input" style="flex:1;">
       <input type="file" id="convo-img-input" accept="image/*" style="display:none;">
+      <input type="file" id="convo-gif-input" accept="image/gif" style="display:none;">
       <div class="media-buttons">
         <button class="media-btn" id="convo-img-btn" title="Send image">IMG</button>
         <button class="media-btn" id="convo-gif-btn" title="Send GIF">GIF</button>
         <button class="media-btn" id="convo-audio-btn" title="Record audio">MIC</button>
       </div>
       <button id="convo-send" class="btn-primary" style="width: auto; padding: 12px 24px; margin: 0;">Send</button>
-    </div>
-    <div class="gif-panel hidden" id="convo-gif-panel">
-      <input type="text" id="convo-gif-url" placeholder="Paste a GIF URL and press Enter" class="search-input">
-      <div id="convo-gif-preview" class="gif-preview"></div>
     </div>
   </div>
 
@@ -431,16 +428,13 @@
     <div class="convo-input-bar">
       <input type="text" id="group-convo-input" placeholder="Type a message..." class="search-input" style="flex:1;">
       <input type="file" id="group-img-input" accept="image/*" style="display:none;">
+      <input type="file" id="group-gif-input" accept="image/gif" style="display:none;">
       <div class="media-buttons">
         <button class="media-btn" id="group-img-btn" title="Send image">IMG</button>
         <button class="media-btn" id="group-gif-btn" title="Send GIF">GIF</button>
         <button class="media-btn" id="group-audio-btn" title="Record audio">MIC</button>
       </div>
       <button id="group-convo-send" class="btn-primary" style="width: auto; padding: 12px 24px; margin: 0;">Send</button>
-    </div>
-    <div class="gif-panel hidden" id="group-gif-panel">
-      <input type="text" id="group-gif-url" placeholder="Paste a GIF URL and press Enter" class="search-input">
-      <div id="group-gif-preview" class="gif-preview"></div>
     </div>
   </div>
 
@@ -547,12 +541,6 @@
     .typing-indicator.hidden { display: none; }
     .typing-dots::after { content: ''; animation: dots 1.4s infinite; }
     @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
-
-    /* GIF panel */
-    .gif-panel { padding: 12px 20px; background: var(--bg-secondary); border-top: 1px solid var(--border); }
-    .gif-panel.hidden { display: none; }
-    .gif-preview { margin-top: 10px; }
-    .gif-preview img { max-width: 200px; max-height: 150px; border-radius: 8px; }
 
     /* Media in bubbles */
     .msg-bubble img { max-width: 100%; max-height: 300px; border-radius: 8px; margin: 4px 0; display: block; }
