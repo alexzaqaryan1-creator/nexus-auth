@@ -19,7 +19,6 @@ function showPage(pageId) {
   if (messagePolling) { clearInterval(messagePolling); messagePolling = null; }
   if (typingPolling) { clearInterval(typingPolling); typingPolling = null; }
   stopRecording();
-  document.querySelectorAll('.gif-picker').forEach(p => p.classList.add('hidden'));
   document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
   const page = document.getElementById(pageId);
   if (page) {
@@ -447,93 +446,6 @@ async function checkTypingStatus(otherId, indicatorId) {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// GIF PICKER (GIPHY-powered — calls GIPHY API directly from browser)
-// ════════════════════════════════════════════════════════════════════════
-
-let gifSearchTimeout = null;
-let giphyApiKey = null;
-
-async function getGiphyKey() {
-  if (giphyApiKey) return giphyApiKey;
-  try {
-    const res = await fetch('/api/giphy-key');
-    const data = await res.json();
-    giphyApiKey = data.key;
-    return giphyApiKey;
-  } catch (err) { return null; }
-}
-
-function setupGifPicker(btnId, closeId, pickerId, searchId, gridId, onSelect) {
-  wireButton(btnId, async () => {
-    const picker = document.getElementById(pickerId);
-    const isHidden = picker.classList.contains('hidden');
-    picker.classList.toggle('hidden');
-    if (isHidden) {
-      document.getElementById(searchId).value = '';
-      loadGifs(gridId, '', onSelect);
-      document.getElementById(searchId).focus();
-    }
-  });
-
-  wireButton(closeId, () => {
-    document.getElementById(pickerId).classList.add('hidden');
-  });
-
-  // Search with debounce
-  const searchEl = document.getElementById(searchId);
-  if (searchEl) {
-    const newSearch = searchEl.cloneNode(true);
-    searchEl.parentNode.replaceChild(newSearch, searchEl);
-    newSearch.addEventListener('input', () => {
-      clearTimeout(gifSearchTimeout);
-      gifSearchTimeout = setTimeout(() => {
-        loadGifs(gridId, newSearch.value.trim(), onSelect);
-      }, 400);
-    });
-  }
-}
-
-async function loadGifs(gridId, query, onSelect) {
-  const grid = document.getElementById(gridId);
-  grid.innerHTML = '<div class="gif-loading">Loading GIFs...</div>';
-
-  const apiKey = await getGiphyKey();
-  if (!apiKey) {
-    grid.innerHTML = '<div class="gif-loading">GIF search not configured. Add GIPHY_API_KEY on Render.</div>';
-    return;
-  }
-
-  try {
-    const endpoint = query
-      ? `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(query)}&limit=30&rating=g&lang=en`
-      : `https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=30&rating=g`;
-
-    const res = await fetch(endpoint);
-    const data = await res.json();
-
-    if (!data.data || data.data.length === 0) {
-      grid.innerHTML = '<div class="gif-loading">No GIFs found</div>';
-      return;
-    }
-
-    grid.innerHTML = '';
-    data.data.forEach(gif => {
-      const img = document.createElement('img');
-      img.src = gif.images.fixed_height_small.url;
-      img.alt = gif.title || 'GIF';
-      img.loading = 'lazy';
-      img.addEventListener('click', () => {
-        onSelect(gif.images.fixed_height.url);
-        grid.closest('.gif-picker').classList.add('hidden');
-      });
-      grid.appendChild(img);
-    });
-  } catch (err) {
-    grid.innerHTML = '<div class="gif-loading">Failed to load GIFs</div>';
-  }
-}
-
-// ════════════════════════════════════════════════════════════════════════
 // MEDIA HELPERS
 // ════════════════════════════════════════════════════════════════════════
 
@@ -631,10 +543,6 @@ function openConversation(friend) {
   // Wire up image
   wireButton('convo-img-btn', () => document.getElementById('convo-img-input').click());
   wireFileInput('convo-img-input', 5, (b64) => sendDM(b64, 'image'));
-
-  // Wire up GIF picker
-  setupGifPicker('convo-gif-btn', 'convo-gif-close', 'convo-gif-picker', 'convo-gif-search', 'convo-gif-grid',
-    (url) => sendDM(url, 'gif'));
 
   // Wire up audio
   setupAudioRecording('convo-audio-btn', async (b64) => {
@@ -785,10 +693,6 @@ function openGroupConvo(group) {
   // Image
   wireButton('group-img-btn', () => document.getElementById('group-img-input').click());
   wireFileInput('group-img-input', 5, (b64) => sendGroupMsg(b64, 'image'));
-
-  // GIF picker
-  setupGifPicker('group-gif-btn', 'group-gif-close', 'group-gif-picker', 'group-gif-search', 'group-gif-grid',
-    (url) => sendGroupMsg(url, 'gif'));
 
   // Audio
   setupAudioRecording('group-audio-btn', async (b64) => { await sendGroupMsg(b64, 'audio'); });

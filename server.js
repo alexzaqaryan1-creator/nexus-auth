@@ -541,14 +541,6 @@ app.get('/api/typing-status/:my_id/:other_id', (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// ROUTES — GIPHY CONFIG (frontend calls GIPHY directly via CORS)
-// ════════════════════════════════════════════════════════════════════════
-
-app.get('/api/giphy-key', (req, res) => {
-  res.json({ key: process.env.GIPHY_API_KEY || null });
-});
-
-// ════════════════════════════════════════════════════════════════════════
 // ROUTES — DECLINE FRIEND REQUEST
 // ════════════════════════════════════════════════════════════════════════
 
