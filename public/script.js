@@ -115,25 +115,39 @@ if (loginForm) {
     if (!password) { showFieldError('err-login-password', 'Password is required'); valid = false; }
     if (!valid) return;
 
-    try {
-      const res = await fetch(API_BASE + '/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-      const data = await res.json();
+    const attemptLogin = async (attemptsLeft) => {
+      try {
+        const res = await fetch(API_BASE + '/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
 
-      if (!res.ok) {
-        showAlert('login-error', data.error || 'Login failed', 'error');
-      } else {
-        showAlert('login-success', 'Login successful! Redirecting...', 'success');
-        currentUser = data.user;
-        localStorage.setItem('nexus_user', JSON.stringify(data.user));
-        setTimeout(() => loadDashboard(data.user), 800);
+        if (res.status === 500 && attemptsLeft > 0) {
+          showAlert('login-error', 'Server is starting up, retrying…', 'error');
+          setTimeout(() => attemptLogin(attemptsLeft - 1), 4000);
+          return;
+        }
+
+        if (!res.ok) {
+          showAlert('login-error', data.error || 'Login failed', 'error');
+        } else {
+          showAlert('login-success', 'Login successful! Redirecting...', 'success');
+          currentUser = data.user;
+          localStorage.setItem('nexus_user', JSON.stringify(data.user));
+          setTimeout(() => loadDashboard(data.user), 800);
+        }
+      } catch (err) {
+        if (attemptsLeft > 0) {
+          showAlert('login-error', 'Server is starting up, retrying…', 'error');
+          setTimeout(() => attemptLogin(attemptsLeft - 1), 4000);
+        } else {
+          showAlert('login-error', 'Could not connect to server', 'error');
+        }
       }
-    } catch (err) {
-      showAlert('login-error', 'Could not connect to server', 'error');
-    }
+    };
+    await attemptLogin(3);
   });
 }
 
